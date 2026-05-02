@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getAllStoragePayload } from '../lib/storage'
+import { useFinance } from '../context/FinanceContext'
 import { streamGroqChat } from '../lib/groq'
 import { Spinner } from './Spinner'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string }
 
 export function ChatAssistant() {
+  const {
+    transactions,
+    profile,
+    savingsGoals,
+    recurringTransactions,
+    budgetLimits,
+    assets,
+    liabilities,
+    netWorthHistory,
+    googleSheetsSync,
+  } = useFinance()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -21,7 +32,17 @@ export function ChatAssistant() {
     if (!text || streaming) return
     setInput('')
 
-    const data = JSON.stringify(getAllStoragePayload())
+    const data = JSON.stringify({
+      transactions,
+      userProfile: profile,
+      savingsGoals,
+      recurringTransactions,
+      budgetLimits,
+      assets,
+      liabilities,
+      netWorthHistory,
+      googleSheetsSync,
+    })
     const system = `คุณคือที่ปรึกษาการเงินส่วนตัว ตอบเป็นภาษาไทย ข้อมูลผู้ใช้: ${data}`
 
     const chatMessages: { role: 'user' | 'assistant'; content: string }[] = [
@@ -66,7 +87,20 @@ export function ChatAssistant() {
     } finally {
       setStreaming(false)
     }
-  }, [input, streaming, messages])
+  }, [
+    input,
+    streaming,
+    messages,
+    transactions,
+    profile,
+    savingsGoals,
+    recurringTransactions,
+    budgetLimits,
+    assets,
+    liabilities,
+    netWorthHistory,
+    googleSheetsSync,
+  ])
 
   return (
     <>

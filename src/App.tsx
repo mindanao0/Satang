@@ -16,8 +16,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <FinanceProvider>
-          <ToastProvider>
+        <ToastProvider>
+          <FinanceProvider>
             <Routes>
               <Route path="/" element={<Layout />}>
                 <Route index element={<Dashboard />} />
@@ -31,8 +31,8 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
-          </ToastProvider>
-        </FinanceProvider>
+          </FinanceProvider>
+        </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   )

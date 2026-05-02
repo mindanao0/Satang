@@ -27,6 +27,8 @@ import {
 } from '../lib/netWorthUtils'
 import { syncTransactionsToGoogleSheets } from '../lib/googleSheets'
 import * as storage from '../lib/storage'
+import * as db from '../lib/supabaseFinance'
+import { useToast } from './ToastContext'
 
 type FinanceContextValue = {
   transactions: Transaction[]
@@ -38,6 +40,8 @@ type FinanceContextValue = {
   liabilities: Liability[]
   netWorthHistory: NetWorthSnapshot[]
   googleSheetsSync: GoogleSheetsSyncSettings
+  /** True while initial Supabase fetch is in progress. */
+  financeHydrating: boolean
   setTransactions: (t: Transaction[]) => void
   setProfile: (p: UserProfile) => void
   setSavingsGoals: (g: SavingsGoal[]) => void
@@ -65,17 +69,14 @@ type FinanceContextValue = {
 const FinanceContext = createContext<FinanceContextValue | null>(null)
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
-  const [transactions, setTransactionsState] = useState<Transaction[]>(() =>
-    storage.loadTransactions(),
-  )
-  const [profile, setProfileState] = useState<UserProfile>(() => storage.loadProfile())
-  const [savingsGoals, setSavingsGoalsState] = useState<SavingsGoal[]>(() =>
-    storage.loadGoals(),
-  )
-  const [recurringTransactions, setRecurringState] = useState<RecurringTransaction[]>(() =>
-    storage.loadRecurringTransactions(),
-  )
-  const [budgetLimits, setBudgetLimitsState] = useState<BudgetLimits>(() => storage.loadBudgetLimits())
+  const { showToast } = useToast()
+  const [financeHydrating, setFinanceHydrating] = useState(true)
+
+  const [transactions, setTransactionsState] = useState<Transaction[]>([])
+  const [profile, setProfileState] = useState<UserProfile>(() => db.cloneDefaultUserProfile())
+  const [savingsGoals, setSavingsGoalsState] = useState<SavingsGoal[]>([])
+  const [recurringTransactions, setRecurringState] = useState<RecurringTransaction[]>([])
+  const [budgetLimits, setBudgetLimitsState] = useState<BudgetLimits>({})
   const [assets, setAssetsState] = useState<Asset[]>(() => storage.loadAssets())
   const [liabilities, setLiabilitiesState] = useState<Liability[]>(() => storage.loadLiabilities())
   const [netWorthHistory, setNetWorthHistoryState] = useState<NetWorthSnapshot[]>(() =>
@@ -84,17 +85,68 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [googleSheetsSync, setGoogleSheetsSyncState] = useState<GoogleSheetsSyncSettings>(() =>
     storage.loadGoogleSheetsSyncSettings(),
   )
-  const prevTxCountRef = useRef<number>(transactions.length)
+  const prevTxCountRef = useRef<number>(0)
+  const didFinishHydrateRef = useRef(false)
+  const transactionsRef = useRef(transactions)
 
   useEffect(() => {
-    setTransactionsState((prev) => {
-      const additions = buildDueRecurringTransactions(prev, recurringTransactions)
-      if (additions.length === 0) return prev
-      const next = [...prev, ...additions]
-      storage.saveTransactions(next)
-      return next
-    })
-  }, [recurringTransactions])
+    transactionsRef.current = transactions
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!db.isSupabaseConfigured()) {
+        showToast('ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY')
+        setFinanceHydrating(false)
+        return
+      }
+      const res = await db.fetchFinanceBootstrap()
+      if (cancelled) return
+      if (!res.ok) {
+        showToast(`โหลดข้อมูลไม่สำเร็จ: ${res.error}`)
+        setFinanceHydrating(false)
+        return
+      }
+      setTransactionsState(res.data.transactions)
+      setProfileState(res.data.profile)
+      setSavingsGoalsState(res.data.savingsGoals)
+      setRecurringState(res.data.recurringTransactions)
+      setBudgetLimitsState(res.data.budgetLimits)
+      setFinanceHydrating(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showToast])
+
+  useEffect(() => {
+    if (financeHydrating) return
+    if (!db.isSupabaseConfigured()) return
+
+    const additions = buildDueRecurringTransactions(transactionsRef.current, recurringTransactions)
+    if (additions.length === 0) return
+
+    let cancelled = false
+    void (async () => {
+      const { error } = await db.insertTransactions(additions)
+      if (cancelled) return
+      if (error) {
+        showToast(`ไม่สามารถสร้างรายการจากรายการประจำได้: ${error}`)
+        return
+      }
+      setTransactionsState((p) => [...p, ...additions])
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [recurringTransactions, financeHydrating, showToast])
+
+  useEffect(() => {
+    if (financeHydrating || didFinishHydrateRef.current) return
+    didFinishHydrateRef.current = true
+    prevTxCountRef.current = transactions.length
+  }, [financeHydrating, transactions.length])
 
   useEffect(() => {
     const { totalAssets, totalLiabilities, netWorth } = computeNetWorthTotals(assets, liabilities)
@@ -162,85 +214,153 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     })()
   }, [transactions, googleSheetsSync])
 
-  const setTransactions = useCallback((t: Transaction[]) => {
-    setTransactionsState(t)
-    storage.saveTransactions(t)
-  }, [])
+  const setTransactions = useCallback(
+    (t: Transaction[]) => {
+      void (async () => {
+        const { error } = await db.replaceAllTransactions(t)
+        if (error) {
+          showToast(`บันทึกรายการไม่สำเร็จ: ${error}`)
+          return
+        }
+        setTransactionsState(t)
+      })()
+    },
+    [showToast],
+  )
 
-  const setProfile = useCallback((p: UserProfile) => {
-    setProfileState(p)
-    storage.saveProfile(p)
-  }, [])
+  const setProfile = useCallback(
+    (p: UserProfile) => {
+      void (async () => {
+        const { error } = await db.upsertUserProfile(p)
+        if (error) {
+          showToast(`บันทึกโปรไฟล์ไม่สำเร็จ: ${error}`)
+          return
+        }
+        setProfileState(p)
+      })()
+    },
+    [showToast],
+  )
 
-  const setSavingsGoals = useCallback((g: SavingsGoal[]) => {
-    setSavingsGoalsState(g)
-    storage.saveGoals(g)
-  }, [])
+  const setSavingsGoals = useCallback(
+    (g: SavingsGoal[]) => {
+      void (async () => {
+        const { error } = await db.replaceAllSavingsGoals(g)
+        if (error) {
+          showToast(`บันทึกเป้าหมายออมไม่สำเร็จ: ${error}`)
+          return
+        }
+        setSavingsGoalsState(g)
+      })()
+    },
+    [showToast],
+  )
 
-  const addTransaction = useCallback((t: Omit<Transaction, 'id'>) => {
-    const id = crypto.randomUUID()
-    setTransactionsState((prev) => {
-      const next = [...prev, { ...t, id }]
-      storage.saveTransactions(next)
-      return next
-    })
-  }, [])
+  const addTransaction = useCallback(
+    (t: Omit<Transaction, 'id'>) => {
+      const id = crypto.randomUUID()
+      const full: Transaction = { ...t, id }
+      void (async () => {
+        const { error } = await db.insertTransaction(full)
+        if (error) {
+          showToast(`บันทึกรายการไม่สำเร็จ: ${error}`)
+          return
+        }
+        setTransactionsState((prev) => [...prev, full])
+      })()
+    },
+    [showToast],
+  )
 
-  const updateTransaction = useCallback((id: string, patch: Partial<Transaction>) => {
-    setTransactionsState((prev) => {
-      const next = prev.map((x) => (x.id === id ? { ...x, ...patch } : x))
-      storage.saveTransactions(next)
-      return next
-    })
-  }, [])
+  const updateTransaction = useCallback(
+    (id: string, patch: Partial<Transaction>) => {
+      void (async () => {
+        const { error } = await db.updateTransactionDb(id, patch)
+        if (error) {
+          showToast(`อัปเดตรายการไม่สำเร็จ: ${error}`)
+          return
+        }
+        setTransactionsState((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+      })()
+    },
+    [showToast],
+  )
 
-  const removeTransaction = useCallback((id: string) => {
-    setTransactionsState((prev) => {
-      const next = prev.filter((x) => x.id !== id)
-      storage.saveTransactions(next)
-      return next
-    })
-  }, [])
+  const removeTransaction = useCallback(
+    (id: string) => {
+      void (async () => {
+        const { error } = await db.deleteTransactionDb(id)
+        if (error) {
+          showToast(`ลบรายการไม่สำเร็จ: ${error}`)
+          return
+        }
+        setTransactionsState((prev) => prev.filter((x) => x.id !== id))
+      })()
+    },
+    [showToast],
+  )
 
   const addRecurringItem = useCallback(
     (item: Omit<RecurringTransaction, 'id' | 'enabled'> & { enabled?: boolean }) => {
       const id = crypto.randomUUID()
-      setRecurringState((prev) => {
-        const next: RecurringTransaction[] = [
-          ...prev,
-          {
-            ...item,
-            id,
-            enabled: item.enabled !== false,
-          },
-        ]
-        storage.saveRecurringTransactions(next)
-        return next
-      })
+      const full: RecurringTransaction = {
+        ...item,
+        id,
+        enabled: item.enabled !== false,
+      }
+      void (async () => {
+        const { error } = await db.insertRecurring(full)
+        if (error) {
+          showToast(`บันทึกรายการประจำไม่สำเร็จ: ${error}`)
+          return
+        }
+        setRecurringState((prev) => [...prev, full])
+      })()
     },
-    [],
+    [showToast],
   )
 
-  const setRecurringEnabled = useCallback((id: string, enabled: boolean) => {
-    setRecurringState((prev) => {
-      const next = prev.map((r) => (r.id === id ? { ...r, enabled } : r))
-      storage.saveRecurringTransactions(next)
-      return next
-    })
-  }, [])
+  const setRecurringEnabled = useCallback(
+    (id: string, enabled: boolean) => {
+      void (async () => {
+        const { error } = await db.updateRecurringDb(id, { enabled })
+        if (error) {
+          showToast(`อัปเดตรายการประจำไม่สำเร็จ: ${error}`)
+          return
+        }
+        setRecurringState((prev) => prev.map((r) => (r.id === id ? { ...r, enabled } : r)))
+      })()
+    },
+    [showToast],
+  )
 
-  const removeRecurringItem = useCallback((id: string) => {
-    setRecurringState((prev) => {
-      const next = prev.filter((r) => r.id !== id)
-      storage.saveRecurringTransactions(next)
-      return next
-    })
-  }, [])
+  const removeRecurringItem = useCallback(
+    (id: string) => {
+      void (async () => {
+        const { error } = await db.deleteRecurringDb(id)
+        if (error) {
+          showToast(`ลบรายการประจำไม่สำเร็จ: ${error}`)
+          return
+        }
+        setRecurringState((prev) => prev.filter((r) => r.id !== id))
+      })()
+    },
+    [showToast],
+  )
 
-  const setBudgetLimits = useCallback((limits: BudgetLimits) => {
-    setBudgetLimitsState(limits)
-    storage.saveBudgetLimits(limits)
-  }, [])
+  const setBudgetLimits = useCallback(
+    (limits: BudgetLimits) => {
+      void (async () => {
+        const { error } = await db.persistBudgetLimits(limits)
+        if (error) {
+          showToast(`บันทึกงบประมาณไม่สำเร็จ: ${error}`)
+          return
+        }
+        setBudgetLimitsState(limits)
+      })()
+    },
+    [showToast],
+  )
 
   const addAsset = useCallback((item: Omit<Asset, 'id'>) => {
     const id = crypto.randomUUID()
@@ -292,22 +412,36 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const upsertGoal = useCallback((g: SavingsGoal) => {
-    setSavingsGoalsState((prev) => {
-      const exists = prev.some((x) => x.id === g.id)
-      const next = exists ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]
-      storage.saveGoals(next)
-      return next
-    })
-  }, [])
+  const upsertGoal = useCallback(
+    (g: SavingsGoal) => {
+      void (async () => {
+        const { error } = await db.upsertSavingsGoal(g)
+        if (error) {
+          showToast(`บันทึกเป้าหมายออมไม่สำเร็จ: ${error}`)
+          return
+        }
+        setSavingsGoalsState((prev) => {
+          const exists = prev.some((x) => x.id === g.id)
+          return exists ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]
+        })
+      })()
+    },
+    [showToast],
+  )
 
-  const removeGoal = useCallback((id: string) => {
-    setSavingsGoalsState((prev) => {
-      const next = prev.filter((x) => x.id !== id)
-      storage.saveGoals(next)
-      return next
-    })
-  }, [])
+  const removeGoal = useCallback(
+    (id: string) => {
+      void (async () => {
+        const { error } = await db.deleteSavingsGoalDb(id)
+        if (error) {
+          showToast(`ลบเป้าหมายออมไม่สำเร็จ: ${error}`)
+          return
+        }
+        setSavingsGoalsState((prev) => prev.filter((x) => x.id !== id))
+      })()
+    },
+    [showToast],
+  )
 
   const value = useMemo(
     () => ({
@@ -320,6 +454,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       liabilities,
       netWorthHistory,
       googleSheetsSync,
+      financeHydrating,
       setTransactions,
       setProfile,
       setSavingsGoals,
@@ -351,6 +486,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       liabilities,
       netWorthHistory,
       googleSheetsSync,
+      financeHydrating,
       setTransactions,
       setProfile,
       setSavingsGoals,
