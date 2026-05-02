@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext'
 import type { SavingsGoal } from '../types'
 import { monthsBetween, projectedBalanceAtDate, requiredMonthlyPayment } from '../lib/savings'
 import { formatTHB } from '../lib/format'
-import { streamClaude } from '../lib/claude'
+import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
 
 export function SavingsPlanner() {
@@ -104,7 +104,7 @@ export function SavingsPlanner() {
           projectedWithCurrentContribution: ins?.projected,
         }
       })
-      await streamClaude(
+      await streamGroq(
         `ข้อมูลเป้าหมายการออมและการลงทุน (สมมติผลตอบแทน ${returnNum}% ต่อปี):\n${JSON.stringify(payload, null, 2)}\n\nช่วยวิเคราะห์ความเป็นไปได้ ความเสี่ยงเบื้องต้น และแนวทางกระจายการลงทุน/ออมในบริบทไทย เป็นภาษาไทย ไม่ใช้ markdown เน้นข้อความปฏิบัติได้จริง`,
         'คุณเป็นที่ปรึกษาการลงทุนส่วนบุคคล ตอบอย่างระมัดระวัง ไม่ถือเป็นคำแนะนำซื้อขายหลักทรัพย์',
         (d) => setAiText((s) => s + d),
@@ -120,8 +120,8 @@ export function SavingsPlanner() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">วางแผนออมเงิน</h1>
-        <p className="mt-1 text-slate-600">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">วางแผนออมเงิน</h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">
           ตั้งเป้าหมาย คำนวณยอดที่ต้องออมต่อเดือน และดูภาพรวมดอกเบี้ยทบต้น
         </p>
       </div>
@@ -129,64 +129,64 @@ export function SavingsPlanner() {
       <div className="grid gap-6 lg:grid-cols-2">
         <form
           onSubmit={handleAdd}
-          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6"
+          className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6"
         >
-          <h2 className="text-lg font-semibold text-slate-900">เพิ่มเป้าหมาย</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">เพิ่มเป้าหมาย</h2>
           <div className="mt-4 space-y-3">
             <label className="block text-sm">
-              <span className="text-slate-600">ชื่อเป้าหมาย</span>
+              <span className="text-slate-600 dark:text-slate-400">ชื่อเป้าหมาย</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="เช่น ดาวน์บ้าน"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">จำนวนเงินเป้าหมาย (บาท)</span>
+              <span className="text-slate-600 dark:text-slate-400">จำนวนเงินเป้าหมาย (บาท)</span>
               <input
                 type="number"
                 min={1}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={targetAmount}
                 onChange={(e) => setTargetAmount(e.target.value)}
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">เงินต้นสะสมปัจจุบัน (บาท)</span>
+              <span className="text-slate-600 dark:text-slate-400">เงินต้นสะสมปัจจุบัน (บาท)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={currentAmount}
                 onChange={(e) => setCurrentAmount(e.target.value)}
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">วันที่ต้องการถึงเป้าหมาย</span>
+              <span className="text-slate-600 dark:text-slate-400">วันที่ต้องการถึงเป้าหมาย</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">เงินออมปัจจุบันต่อเดือน (บาท)</span>
+              <span className="text-slate-600 dark:text-slate-400">เงินออมปัจจุบันต่อเดือน (บาท)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={monthlyContribution}
                 onChange={(e) => setMonthlyContribution(e.target.value)}
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">สมมติผลตอบแทนการลงทุน (ต่อปี %)</span>
+              <span className="text-slate-600 dark:text-slate-400">สมมติผลตอบแทนการลงทุน (ต่อปี %)</span>
               <input
                 type="number"
                 step={0.1}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={annualReturn}
                 onChange={(e) => setAnnualReturn(e.target.value)}
               />
@@ -194,37 +194,37 @@ export function SavingsPlanner() {
           </div>
           <button
             type="submit"
-            className="mt-4 rounded-lg bg-blue-800 px-4 py-2 text-sm font-medium text-white hover:bg-blue-900"
+            className="mt-4 rounded-lg bg-blue-800 px-4 py-2 text-sm font-medium text-white hover:bg-blue-900 dark:bg-sky-700 dark:hover:bg-sky-600"
           >
             บันทึกเป้าหมาย
           </button>
         </form>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+        <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">คำแนะนำจาก AI</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">คำแนะนำจาก AI</h2>
             {aiLoading ? <Spinner /> : null}
           </div>
           <button
             type="button"
             onClick={askAi}
             disabled={aiLoading}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
           >
             ให้ AI ช่วยวางแผน
           </button>
           {aiError ? (
-            <p className="mt-3 text-sm text-red-600">{aiError}</p>
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
           ) : (
-            <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{aiText}</p>
+            <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{aiText}</p>
           )}
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">เป้าหมายของคุณ</h2>
+      <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">เป้าหมายของคุณ</h2>
         {savingsGoals.length === 0 ? (
-          <p className="mt-4 text-slate-500">ยังไม่มีเป้าหมาย</p>
+          <p className="mt-4 text-slate-500 dark:text-slate-400">ยังไม่มีเป้าหมาย</p>
         ) : (
           <ul className="mt-4 space-y-6">
             {savingsGoals.map((g) => {
@@ -235,12 +235,12 @@ export function SavingsPlanner() {
               return (
                 <li
                   key={g.id}
-                  className="rounded-lg border border-slate-100 bg-slate-50/80 p-4"
+                  className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/60"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <div className="font-semibold text-slate-900">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-600">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                         เป้าหมาย {formatTHB(g.targetAmount)} · ถึงวันที่ {g.targetDate}
                       </div>
                     </div>
@@ -250,26 +250,26 @@ export function SavingsPlanner() {
                         removeGoal(g.id)
                         showToast('ลบเป้าหมายแล้ว')
                       }}
-                      className="text-sm text-red-700 hover:underline"
+                      className="text-sm text-red-700 hover:underline dark:text-red-400"
                     >
                       ลบ
                     </button>
                   </div>
-                  <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                     <div
                       className="h-full rounded-full bg-blue-700 transition-all"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <div className="mt-2 text-xs text-slate-600">
+                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
                     ความคืบหน้า {pct}% — สะสมแล้ว {formatTHB(g.currentAmount)}
                   </div>
                   {ins ? (
-                    <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+                    <div className="mt-3 grid gap-2 text-sm text-slate-700 dark:text-slate-300 md:grid-cols-2">
                       <div>
                         เหลือประมาณ {ins.months} เดือน · แนะนำออมขั้นต่ำต่อเดือน (ที่ผลตอบแทน{' '}
                         {returnNum}%/ปี):{' '}
-                        <span className="font-medium text-green-700">
+                        <span className="font-medium text-green-700 dark:text-green-400">
                           {formatTHB(Math.max(0, Math.ceil(ins.required)))}
                         </span>
                       </div>
@@ -285,7 +285,7 @@ export function SavingsPlanner() {
                           {formatTHB(Math.round(ins.projected))}
                         </span>
                         {onTrack ? (
-                          <span className="ml-2 text-green-700">(โดยประมาณถึงเป้า)</span>
+                          <span className="ml-2 text-green-700 dark:text-green-400">(โดยประมาณถึงเป้า)</span>
                         ) : null}
                       </div>
                     </div>

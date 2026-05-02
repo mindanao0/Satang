@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: 'Sarabun', 'Segoe UI', system-ui, sans-serif;
   --color-brand-950: #0f172a;
@@ -15,6 +17,6 @@
     font-family: var(--font-sans);
   }
   body {
-    @apply m-0 min-h-screen bg-slate-100 text-slate-900 antialiased;
+    @apply m-0 min-h-screen bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
   }
 }

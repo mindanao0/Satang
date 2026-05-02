@@ -7,7 +7,7 @@ import {
   totalAnnualDeductions,
 } from '../lib/tax'
 import { formatTHB } from '../lib/format'
-import { streamClaude } from '../lib/claude'
+import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
 
 export function TaxCalculator() {
@@ -40,7 +40,7 @@ export function TaxCalculator() {
 ภาษีประมาณการต่อปี: ${breakdown.taxAnnual}
 รายละเอียดค่าลดหย่อน: ${JSON.stringify(profile.taxDeductions)}
 `
-      await streamClaude(
+      await streamGroq(
         `จากข้อมูลผู้ใช้:\n${summary}\n\nช่วยแนะนำแนวทางลดหย่อนภาษีเพิ่มเติมที่เหมาะสมในบริบทไทย (SSF, RMF, ประกันชีวิต ฯลฯ) เป็นภาษาไทย 3-8 ย่อหน้า ไม่ใช้ markdown เน้นข้อความที่เข้าใจง่าย`,
         'คุณเป็นที่ปรึกษาภาษีส่วนบุคคลในประเทศไทย ตอบอย่างระมัดระวัง ไม่ถือเป็นคำแนะนำทางกฎหมาย',
         (d) => setAiText((s) => s + d),
@@ -58,25 +58,25 @@ export function TaxCalculator() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">คำนวณภาษีเงินได้บุคคลธรรมดา</h1>
-        <p className="mt-1 text-slate-600">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">คำนวณภาษีเงินได้บุคคลธรรมดา</h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">
           อัตราก้าวหน้า ปีภาษี 2567 — สำหรับประมาณการเบื้องต้นเท่านั้น
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">ข้อมูลรายได้และค่าลดหย่อน</h2>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ข้อมูลรายได้และค่าลดหย่อน</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             เงินเดือนเป็นฐานต่อเดือน ระบบคูณ 12 เพื่อหาเงินได้ทั้งปี
           </p>
 
           <label className="mt-4 block text-sm">
-            <span className="text-slate-600">เงินเดือน (บาท/เดือน)</span>
+            <span className="text-slate-600 dark:text-slate-400">เงินเดือน (บาท/เดือน)</span>
             <input
               type="number"
               min={0}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={profile.salary || ''}
               onChange={(e) =>
                 setProfile({ ...profile, salary: Number(e.target.value) || 0 })
@@ -87,11 +87,11 @@ export function TaxCalculator() {
 
           <div className="mt-4 space-y-3">
             <label className="block text-sm">
-              <span className="text-slate-600">ค่าลดหย่อนส่วนตัว (บาท/ปี)</span>
+              <span className="text-slate-600 dark:text-slate-400">ค่าลดหย่อนส่วนตัว (บาท/ปี)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.personalAllowance || ''}
                 onChange={(e) =>
                   updateDeductions({ personalAllowance: Number(e.target.value) || 0 })
@@ -100,11 +100,11 @@ export function TaxCalculator() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">ประกันสังคม (บาท/ปี, ใช้ลดหย่อนได้สูงสุด 9,000)</span>
+              <span className="text-slate-600 dark:text-slate-400">ประกันสังคม (บาท/ปี, ใช้ลดหย่อนได้สูงสุด 9,000)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.socialSecurity || ''}
                 onChange={(e) =>
                   setProfile({
@@ -122,11 +122,11 @@ export function TaxCalculator() {
               </span>
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">เบี้ยประกันชีวิต (บาท/ปี)</span>
+              <span className="text-slate-600 dark:text-slate-400">เบี้ยประกันชีวิต (บาท/ปี)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.lifeInsurance || ''}
                 onChange={(e) =>
                   updateDeductions({ lifeInsurance: Number(e.target.value) || 0 })
@@ -135,22 +135,22 @@ export function TaxCalculator() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">SSF (บาท/ปี)</span>
+              <span className="text-slate-600 dark:text-slate-400">SSF (บาท/ปี)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.ssf || ''}
                 onChange={(e) => updateDeductions({ ssf: Number(e.target.value) || 0 })}
                 onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
               />
             </label>
             <label className="block text-sm">
-              <span className="text-slate-600">RMF (บาท/ปี)</span>
+              <span className="text-slate-600 dark:text-slate-400">RMF (บาท/ปี)</span>
               <input
                 type="number"
                 min={0}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.rmf || ''}
                 onChange={(e) => updateDeductions({ rmf: Number(e.target.value) || 0 })}
                 onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
@@ -160,77 +160,77 @@ export function TaxCalculator() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
-            <h2 className="text-lg font-semibold text-slate-900">ผลการคำนวณ</h2>
+          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ผลการคำนวณ</h2>
             <ul className="mt-4 space-y-3 text-sm">
-              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <span className="text-slate-600">เงินได้ทั้งปี (ประมาณ)</span>
-                <span className="font-medium text-slate-900">
+              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                <span className="text-slate-600 dark:text-slate-400">เงินได้ทั้งปี (ประมาณ)</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
                   {formatTHB(breakdown.annualGross)}
                 </span>
               </li>
-              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <span className="text-slate-600">ค่าลดหย่อนรวม</span>
-                <span className="font-medium text-slate-900">
+              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                <span className="text-slate-600 dark:text-slate-400">ค่าลดหย่อนรวม</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
                   {formatTHB(breakdown.totalDeductions)}
                 </span>
               </li>
-              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <span className="text-slate-600">เงินได้สุทธิ (ฐานภาษี)</span>
-                <span className="font-medium text-slate-900">
+              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                <span className="text-slate-600 dark:text-slate-400">เงินได้สุทธิ (ฐานภาษี)</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
                   {formatTHB(breakdown.netTaxableIncome)}
                 </span>
               </li>
-              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <span className="text-slate-600">ภาษีสุทธิ (ต่อปี)</span>
-                <span className="text-lg font-semibold text-slate-900">
+              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                <span className="text-slate-600 dark:text-slate-400">ภาษีสุทธิ (ต่อปี)</span>
+                <span className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {formatTHB(breakdown.taxAnnual)}
                 </span>
               </li>
-              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <span className="text-slate-600">ภาษีหัก ณ ที่จ่ายโดยเฉลี่ย (ต่อเดือน)</span>
-                <span className="font-medium text-slate-900">
+              <li className="flex justify-between gap-4 border-b border-slate-100 pb-2 dark:border-slate-700">
+                <span className="text-slate-600 dark:text-slate-400">ภาษีหัก ณ ที่จ่ายโดยเฉลี่ย (ต่อเดือน)</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
                   {formatTHB(breakdown.taxMonthlyWithholding)}
                 </span>
               </li>
               <li className="flex justify-between gap-4">
-                <span className="text-slate-600">เงินได้สุทธิหลังหักภาษี (ต่อปี)</span>
-                <span className="font-medium text-green-700">
+                <span className="text-slate-600 dark:text-slate-400">เงินได้สุทธิหลังหักภาษี (ต่อปี)</span>
+                <span className="font-medium text-green-700 dark:text-green-400">
                   {formatTHB(breakdown.netIncomeAfterTaxAnnual)}
                 </span>
               </li>
               <li className="flex justify-between gap-4 pt-2">
-                <span className="text-slate-600">เงินได้สุทธิหลังหักภาษี (ต่อเดือน)</span>
-                <span className="font-medium text-green-700">
+                <span className="text-slate-600 dark:text-slate-400">เงินได้สุทธิหลังหักภาษี (ต่อเดือน)</span>
+                <span className="font-medium text-green-700 dark:text-green-400">
                   {formatTHB(breakdown.netIncomeAfterTaxMonthly)}
                 </span>
               </li>
             </ul>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-slate-900">คำแนะนำจาก AI</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">คำแนะนำจาก AI</h2>
               {aiLoading ? <Spinner /> : null}
             </div>
             <button
               type="button"
               onClick={askAi}
               disabled={aiLoading}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
             >
               ให้ AI แนะนำการลดหย่อนภาษีเพิ่มเติม
             </button>
             {aiError ? (
-              <p className="mt-3 text-sm text-red-600">{aiError}</p>
+              <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
             ) : (
-              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{aiText}</p>
+              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{aiText}</p>
             )}
           </div>
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         อัตราภาษี: 0–150,000 บาท 0% · 150,001–300,000 5% · 300,001–500,000 10% · 500,001–750,000
         15% · 750,001–1,000,000 20% · 1,000,001–2,000,000 25% · 2,000,001–5,000,000 30% ·
         5,000,001 ขึ้นไป 35%

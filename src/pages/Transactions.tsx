@@ -23,7 +23,16 @@ function monthOptions(transactions: Transaction[]): { value: string; label: stri
 const allCategories = [...new Set([...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES])]
 
 export function Transactions() {
-  const { transactions, addTransaction, updateTransaction, removeTransaction } = useFinance()
+  const {
+    transactions,
+    addTransaction,
+    updateTransaction,
+    removeTransaction,
+    recurringTransactions,
+    addRecurringItem,
+    setRecurringEnabled,
+    removeRecurringItem,
+  } = useFinance()
   const { showToast } = useToast()
 
   const [filterMonth, setFilterMonth] = useState<string>('all')
@@ -37,7 +46,14 @@ export function Transactions() {
 
   const [editingId, setEditingId] = useState<string | null>(null)
 
+  const [recType, setRecType] = useState<'income' | 'expense'>('expense')
+  const [recCategory, setRecCategory] = useState<string>(EXPENSE_CATEGORIES[0])
+  const [recAmount, setRecAmount] = useState('')
+  const [recDay, setRecDay] = useState('1')
+  const [recName, setRecName] = useState('')
+
   const monthChoices = useMemo(() => monthOptions(transactions), [transactions])
+  const recCategoriesForType = recType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
   const categoriesForType = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
@@ -92,25 +108,58 @@ export function Transactions() {
     resetForm()
   }
 
+  function handleRecurringSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const num = Number(recAmount.replace(/,/g, ''))
+    if (!Number.isFinite(num) || num <= 0) {
+      showToast('กรุณากรอกจำนวนเงินที่ถูกต้อง')
+      return
+    }
+    const day = Number(recDay)
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      showToast('กรุณาระบุวันที่ 1–31')
+      return
+    }
+    const trimmed = recName.trim()
+    if (!trimmed) {
+      showToast('กรุณากรอกชื่อรายการ')
+      return
+    }
+    addRecurringItem({
+      name: trimmed,
+      amount: num,
+      category: recCategory,
+      type: recType,
+      dayOfMonth: day,
+      enabled: true,
+    })
+    showToast('เพิ่มรายการประจำแล้ว')
+    setRecType('expense')
+    setRecCategory(EXPENSE_CATEGORIES[0])
+    setRecAmount('')
+    setRecDay('1')
+    setRecName('')
+  }
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">บันทึกรายรับ-รายจ่าย</h1>
-        <p className="mt-1 text-slate-600">เพิ่ม แก้ไข และกรองรายการของคุณ</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">บันทึกรายรับ-รายจ่าย</h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">เพิ่ม แก้ไข และกรองรายการของคุณ</p>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6"
+        className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6"
       >
-        <h2 className="text-lg font-semibold text-slate-900">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
           {editingId ? 'แก้ไขรายการ' : 'เพิ่มรายการ'}
         </h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <label className="block text-sm">
-            <span className="text-slate-600">ประเภท</span>
+            <span className="text-slate-600 dark:text-slate-400">ประเภท</span>
             <select
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={type}
               onChange={(e) => {
                 const v = e.target.value as 'income' | 'expense'
@@ -123,9 +172,9 @@ export function Transactions() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">หมวดหมู่</span>
+            <span className="text-slate-600 dark:text-slate-400">หมวดหมู่</span>
             <select
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
@@ -137,32 +186,32 @@ export function Transactions() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">จำนวนเงิน (บาท)</span>
+            <span className="text-slate-600 dark:text-slate-400">จำนวนเงิน (บาท)</span>
             <input
               type="number"
               min={1}
               step={1}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
             />
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">วันที่</span>
+            <span className="text-slate-600 dark:text-slate-400">วันที่</span>
             <input
               type="date"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
             />
           </label>
           <label className="block text-sm md:col-span-2">
-            <span className="text-slate-600">หมายเหตุ</span>
+            <span className="text-slate-600 dark:text-slate-400">หมายเหตุ</span>
             <input
               type="text"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="เช่น ค่าอาหารกลางวัน"
@@ -172,7 +221,7 @@ export function Transactions() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="submit"
-            className="rounded-lg bg-blue-800 px-4 py-2 text-sm font-medium text-white hover:bg-blue-900"
+            className="rounded-lg bg-blue-800 px-4 py-2 text-sm font-medium text-white hover:bg-blue-900 dark:bg-sky-700 dark:hover:bg-sky-600"
           >
             {editingId ? 'บันทึกการแก้ไข' : 'บันทึก'}
           </button>
@@ -180,7 +229,7 @@ export function Transactions() {
             <button
               type="button"
               onClick={resetForm}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               ยกเลิกการแก้ไข
             </button>
@@ -188,14 +237,170 @@ export function Transactions() {
         </div>
       </form>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">รายการประจำ</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          ระบบจะเพิ่มรายการเข้า “รายการทั้งหมด” อัตโนมัติเมื่อถึงวันที่ในเดือน (เดือนละครั้งต่อรายการ)
+        </p>
+
+        <form onSubmit={handleRecurringSubmit} className="mt-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <label className="block text-sm md:col-span-2">
+              <span className="text-slate-600 dark:text-slate-400">ชื่อ</span>
+              <input
+                type="text"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                value={recName}
+                onChange={(e) => setRecName(e.target.value)}
+                placeholder="เช่น ค่าเช่า"
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-600 dark:text-slate-400">ประเภท</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                value={recType}
+                onChange={(e) => {
+                  const v = e.target.value as 'income' | 'expense'
+                  setRecType(v)
+                  setRecCategory(v === 'income' ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0])
+                }}
+              >
+                <option value="income">รายรับ</option>
+                <option value="expense">รายจ่าย</option>
+              </select>
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="text-slate-600 dark:text-slate-400">หมวดหมู่</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                value={recCategory}
+                onChange={(e) => setRecCategory(e.target.value)}
+              >
+                {recCategoriesForType.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-600 dark:text-slate-400">จำนวนเงิน (บาท)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                value={recAmount}
+                onChange={(e) => setRecAmount(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-600 dark:text-slate-400">วันที่ของเดือน (1–31)</span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                step={1}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                value={recDay}
+                onChange={(e) => setRecDay(e.target.value)}
+                required
+              />
+            </label>
+          </div>
+          <button
+            type="submit"
+            className="mt-4 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
+          >
+            เพิ่มรายการประจำ
+          </button>
+        </form>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                <th className="py-2 pr-3 font-medium">ชื่อ</th>
+                <th className="py-2 pr-3 font-medium">ประเภท</th>
+                <th className="py-2 pr-3 font-medium">หมวด</th>
+                <th className="py-2 pr-3 font-medium text-right">จำนวน</th>
+                <th className="py-2 pr-3 font-medium">วันที่</th>
+                <th className="py-2 pr-3 font-medium">ใช้งาน</th>
+                <th className="py-2 font-medium">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recurringTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-slate-500 dark:text-slate-400">
+                    ยังไม่มีรายการประจำ
+                  </td>
+                </tr>
+              ) : (
+                recurringTransactions.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-100 dark:border-slate-700">
+                    <td className="py-2 pr-3 font-medium text-slate-800 dark:text-slate-200">{r.name}</td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={
+                          r.type === 'income'
+                            ? 'font-medium text-green-700 dark:text-green-400'
+                            : 'font-medium text-red-700 dark:text-red-400'
+                        }
+                      >
+                        {r.type === 'income' ? 'รายรับ' : 'รายจ่าย'}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{r.category}</td>
+                    <td
+                      className={`py-2 pr-3 text-right font-medium ${r.type === 'income' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
+                    >
+                      {r.type === 'income' ? '+' : '−'}
+                      {formatTHB(r.amount)}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">วันที่ {r.dayOfMonth}</td>
+                    <td className="py-2 pr-3">
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-800 focus:ring-blue-700"
+                          checked={r.enabled}
+                          onChange={(e) => setRecurringEnabled(r.id, e.target.checked)}
+                        />
+                        <span className="text-slate-600 dark:text-slate-400">{r.enabled ? 'เปิด' : 'ปิด'}</span>
+                      </label>
+                    </td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removeRecurringItem(r.id)
+                          showToast('ลบรายการประจำแล้ว')
+                        }}
+                        className="text-red-700 hover:underline dark:text-red-400"
+                      >
+                        ลบ
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">รายการทั้งหมด</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">รายการทั้งหมด</h2>
           <div className="flex flex-wrap gap-2">
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-slate-600 dark:text-slate-400">
               เดือน
               <select
-                className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-900"
+                className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={filterMonth}
                 onChange={(e) => setFilterMonth(e.target.value)}
               >
@@ -207,10 +412,10 @@ export function Transactions() {
                 ))}
               </select>
             </label>
-            <label className="text-sm text-slate-600">
+            <label className="text-sm text-slate-600 dark:text-slate-400">
               หมวด
               <select
-                className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-900"
+                className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
               >
@@ -228,7 +433,7 @@ export function Transactions() {
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
+              <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-600 dark:text-slate-400">
                 <th className="py-2 pr-3 font-medium">วันที่</th>
                 <th className="py-2 pr-3 font-medium">ประเภท</th>
                 <th className="py-2 pr-3 font-medium">หมวด</th>
@@ -240,38 +445,38 @@ export function Transactions() {
             <tbody>
               {sortedDisplay.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
+                  <td colSpan={6} className="py-8 text-center text-slate-500 dark:text-slate-400">
                     ไม่มีรายการตามตัวกรอง
                   </td>
                 </tr>
               ) : (
                 sortedDisplay.map((t) => (
-                  <tr key={t.id} className="border-b border-slate-100">
-                    <td className="py-2 pr-3 text-slate-700">{t.date}</td>
+                  <tr key={t.id} className="border-b border-slate-100 dark:border-slate-700">
+                    <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{t.date}</td>
                     <td className="py-2 pr-3">
                       <span
                         className={
                           t.type === 'income'
-                            ? 'font-medium text-green-700'
-                            : 'font-medium text-red-700'
+                            ? 'font-medium text-green-700 dark:text-green-400'
+                            : 'font-medium text-red-700 dark:text-red-400'
                         }
                       >
                         {t.type === 'income' ? 'รายรับ' : 'รายจ่าย'}
                       </span>
                     </td>
-                    <td className="py-2 pr-3 text-slate-700">{t.category}</td>
+                    <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{t.category}</td>
                     <td
-                      className={`py-2 pr-3 text-right font-medium ${t.type === 'income' ? 'text-green-700' : 'text-red-700'}`}
+                      className={`py-2 pr-3 text-right font-medium ${t.type === 'income' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
                     >
                       {t.type === 'income' ? '+' : '−'}
                       {formatTHB(t.amount)}
                     </td>
-                    <td className="max-w-[200px] truncate py-2 pr-3 text-slate-600">{t.note}</td>
+                    <td className="max-w-[200px] truncate py-2 pr-3 text-slate-600 dark:text-slate-400">{t.note}</td>
                     <td className="py-2">
                       <button
                         type="button"
                         onClick={() => startEdit(t)}
-                        className="mr-2 text-blue-700 hover:underline"
+                        className="mr-2 text-blue-700 hover:underline dark:text-sky-400"
                       >
                         แก้ไข
                       </button>
@@ -282,7 +487,7 @@ export function Transactions() {
                           showToast('ลบรายการแล้ว')
                           if (editingId === t.id) resetForm()
                         }}
-                        className="text-red-700 hover:underline"
+                        className="text-red-700 hover:underline dark:text-red-400"
                       >
                         ลบ
                       </button>
