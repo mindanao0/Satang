@@ -76,8 +76,8 @@ export function Dashboard() {
       const limit = budgetLimits[cat]!
       const used = monthStats.byCat[cat] ?? 0
       const pct = limit > 0 ? (used / limit) * 100 : 0
-      const over = used >= limit
-      const warn = !over && used >= limit * 0.8
+      const over = used > limit
+      const warn = !over && used > limit * 0.8
       return { cat, limit, used, pct, over, warn }
     })
   }, [budgetLimits, monthStats.byCat])
