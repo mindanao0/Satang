@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFinance } from '../context/FinanceContext'
 import { useToast } from '../context/ToastContext'
 import {
@@ -62,6 +62,12 @@ export function TaxCalculator() {
       taxDeductions: { ...profile.taxDeductions, ...partial },
     })
   }
+
+  /** Re-persist on blur so success toast matches last save; errors use formatted Supabase text via toast. */
+  const persistProfileOnBlur = useCallback(async () => {
+    const { error } = await setProfile(profile)
+    if (!error) showToast('บันทึกข้อมูลแล้ว')
+  }, [profile, setProfile, showToast])
 
   async function askAi() {
     setAiError(null)
@@ -127,7 +133,7 @@ export function TaxCalculator() {
               onChange={(e) =>
                 setProfile({ ...profile, salary: Number(e.target.value) || 0 })
               }
-              onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+              onBlur={() => void persistProfileOnBlur()}
             />
           </label>
 
@@ -142,7 +148,7 @@ export function TaxCalculator() {
                 onChange={(e) =>
                   updateDeductions({ personalAllowance: Number(e.target.value) || 0 })
                 }
-                onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+                onBlur={() => void persistProfileOnBlur()}
               />
             </label>
             <label className="block text-sm">
@@ -161,7 +167,7 @@ export function TaxCalculator() {
                     },
                   })
                 }
-                onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+                onBlur={() => void persistProfileOnBlur()}
               />
               <span className="mt-1 block text-xs text-slate-500">
                 ใช้ในการคำนวณ: {formatTHB(ssCapped)} / ปี
@@ -177,7 +183,7 @@ export function TaxCalculator() {
                 onChange={(e) =>
                   updateDeductions({ lifeInsurance: Number(e.target.value) || 0 })
                 }
-                onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+                onBlur={() => void persistProfileOnBlur()}
               />
             </label>
             <label className="block text-sm">
@@ -188,7 +194,7 @@ export function TaxCalculator() {
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.ssf || ''}
                 onChange={(e) => updateDeductions({ ssf: Number(e.target.value) || 0 })}
-                onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+                onBlur={() => void persistProfileOnBlur()}
               />
             </label>
             <label className="block text-sm">
@@ -199,7 +205,7 @@ export function TaxCalculator() {
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 value={profile.taxDeductions.rmf || ''}
                 onChange={(e) => updateDeductions({ rmf: Number(e.target.value) || 0 })}
-                onBlur={() => showToast('บันทึกข้อมูลแล้ว')}
+                onBlur={() => void persistProfileOnBlur()}
               />
             </label>
           </div>

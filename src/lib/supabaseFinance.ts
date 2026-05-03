@@ -9,8 +9,17 @@ import type {
 import { EXPENSE_CATEGORIES } from '../types'
 import { supabase } from './supabase'
 
-/** Single-tenant row id for `user_profile`. */
-export const USER_PROFILE_ROW_ID = 'default'
+/** Build a single UI/toast string from a PostgREST/Supabase error (message, details, hint, code). */
+export function formatSupabaseError(
+  err: { message: string; details?: string; hint?: string; code?: string } | null,
+): string | null {
+  if (!err) return null
+  const parts: string[] = [err.message]
+  if (err.details) parts.push(`Details: ${err.details}`)
+  if (err.hint) parts.push(`Hint: ${err.hint}`)
+  if (err.code) parts.push(`Code: ${err.code}`)
+  return parts.join(' · ')
+}
 
 export function cloneDefaultUserProfile(): UserProfile {
   return {
@@ -105,26 +114,40 @@ export function savingsGoalToRow(g: SavingsGoal): Record<string, unknown> {
   }
 }
 
+function definedNum(v: unknown): number | undefined {
+  if (v === undefined || v === null) return undefined
+  const n = typeof v === 'string' ? Number(v) : Number(v)
+  return Number.isFinite(n) ? n : undefined
+}
+
 export function mapRowToUserProfile(r: Record<string, unknown>): UserProfile {
   const td = r.tax_deductions as Record<string, unknown> | null | undefined
   return {
     salary: num(r.salary),
     taxDeductions: {
       personalAllowance:
-        td?.personalAllowance != null ? num(td.personalAllowance) : defaultProfile.taxDeductions.personalAllowance,
-      socialSecurity: num(td?.socialSecurity),
-      lifeInsurance: num(td?.lifeInsurance),
-      ssf: num(td?.ssf),
-      rmf: num(td?.rmf),
+        definedNum(r.personal_allowance) ??
+        (td?.personalAllowance != null ? num(td.personalAllowance) : undefined) ??
+        defaultProfile.taxDeductions.personalAllowance,
+      socialSecurity: definedNum(r.social_security) ?? num(td?.socialSecurity),
+      lifeInsurance: definedNum(r.life_insurance) ?? num(td?.lifeInsurance),
+      ssf: definedNum(r.ssf) ?? num(td?.ssf),
+      rmf: definedNum(r.rmf) ?? num(td?.rmf),
     },
   }
 }
 
-export function userProfileToRow(p: UserProfile): Record<string, unknown> {
+/** Insert/update payload for `user_profile` (never includes `id`). */
+function userProfileDbPayload(p: UserProfile) {
+  const td = p.taxDeductions
   return {
-    id: USER_PROFILE_ROW_ID,
     salary: p.salary,
-    tax_deductions: p.taxDeductions,
+    tax_deductions: td,
+    personal_allowance: td.personalAllowance,
+    social_security: td.socialSecurity,
+    life_insurance: td.lifeInsurance,
+    ssf: td.ssf,
+    rmf: td.rmf,
   }
 }
 
@@ -152,7 +175,7 @@ export async function fetchFinanceBootstrap(): Promise<
 > {
   const [txRes, profileRes, goalsRes, recRes, limitsRes] = await Promise.all([
     supabase.from('transactions').select('*').order('date', { ascending: false }),
-    supabase.from('user_profile').select('*').maybeSingle(),
+    supabase.from('user_profile').select('*').limit(1),
     supabase.from('savings_goals').select('*'),
     supabase.from('recurring_transactions').select('*'),
     supabase.from('budget_limits').select('*'),
@@ -167,8 +190,9 @@ export async function fetchFinanceBootstrap(): Promise<
 
   if (firstErr) return { ok: false, error: firstErr }
 
-  const profile = profileRes.data
-    ? mapRowToUserProfile(profileRes.data as Record<string, unknown>)
+  const profileRow = (profileRes.data ?? [])[0]
+  const profile = profileRow
+    ? mapRowToUserProfile(profileRow as Record<string, unknown>)
     : cloneDefaultUserProfile()
 
   return {
@@ -235,8 +259,24 @@ export async function replaceAllTransactions(
 }
 
 export async function upsertUserProfile(p: UserProfile): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('user_profile').upsert(userProfileToRow(p))
-  return { error: error?.message ?? null }
+  const payload = userProfileDbPayload(p)
+  console.log('[Supabase] user_profile save payload:', JSON.stringify(payload, null, 2))
+
+  const { data: existing, error: selErr } = await supabase
+    .from('user_profile')
+    .select('id')
+    .limit(1)
+    .maybeSingle()
+
+  if (selErr) return { error: formatSupabaseError(selErr) }
+
+  if (existing) {
+    const { error } = await supabase.from('user_profile').update(payload).eq('id', existing.id)
+    return { error: formatSupabaseError(error) }
+  }
+
+  const { error } = await supabase.from('user_profile').insert(payload)
+  return { error: formatSupabaseError(error) }
 }
 
 export async function insertRecurring(

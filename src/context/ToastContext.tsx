@@ -18,7 +18,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback((msg: string) => {
     setMessage(msg)
-    window.setTimeout(() => setMessage(null), 3200)
+    const longOrError = msg.length > 120 || msg.includes('ไม่สำเร็จ')
+    window.setTimeout(() => setMessage(null), longOrError ? 12_000 : 3200)
   }, [])
 
   const value = useMemo(() => ({ showToast }), [showToast])
@@ -28,10 +29,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {message ? (
         <div
-          className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-slate-100 dark:text-slate-900 md:bottom-8"
+          className="fixed bottom-24 left-1/2 z-[60] max-h-[min(50vh,24rem)] max-w-[min(90vw,36rem)] -translate-x-1/2 overflow-y-auto rounded-lg bg-slate-900 px-4 py-2 text-left text-sm text-white shadow-lg dark:bg-slate-100 dark:text-slate-900 md:bottom-8"
           role="status"
         >
-          {message}
+          <span className="whitespace-pre-wrap break-words">{message}</span>
         </div>
       ) : null}
     </ToastContext.Provider>

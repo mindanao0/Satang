@@ -30,9 +30,14 @@ create table if not exists public.savings_goals (
 );
 
 create table if not exists public.user_profile (
-  id text primary key,
+  id uuid primary key default gen_random_uuid(),
   salary numeric not null default 0,
-  tax_deductions jsonb not null default '{}'::jsonb
+  tax_deductions jsonb not null default '{}'::jsonb,
+  personal_allowance numeric not null default 60000,
+  social_security numeric not null default 0,
+  life_insurance numeric not null default 0,
+  ssf numeric not null default 0,
+  rmf numeric not null default 0
 );
 
 create table if not exists public.budget_limits (
