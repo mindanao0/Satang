@@ -1,24 +1,65 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFinance } from '../context/FinanceContext'
 import { useToast } from '../context/ToastContext'
 import {
   clampSocialSecurityAnnual,
-  computeTaxFromProfile,
+  computeTaxFromProfileAndWallet,
   totalAnnualDeductions,
 } from '../lib/tax'
 import { formatTHB } from '../lib/format'
 import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
+import { isSupabaseConfigured } from '../lib/supabaseFinance'
+import { fetchMonthlyWalletForMonth, monthKeyFromDate } from '../lib/supabaseWallet'
 
 export function TaxCalculator() {
   const { profile, setProfile } = useFinance()
   const { showToast } = useToast()
 
+  const [walletStarting, setWalletStarting] = useState(0)
+  const [walletLoaded, setWalletLoaded] = useState(false)
+  const didAutofillSalary = useRef(false)
+
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
 
-  const breakdown = useMemo(() => computeTaxFromProfile(profile), [profile])
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isSupabaseConfigured()) {
+        setWalletLoaded(true)
+        return
+      }
+      const mk = monthKeyFromDate(new Date())
+      const { data, error } = await fetchMonthlyWalletForMonth(mk)
+      if (cancelled) return
+      if (!error) setWalletStarting(data?.startingBalance ?? 0)
+      setWalletLoaded(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!walletLoaded || didAutofillSalary.current) return
+    if (profile.salary > 0) {
+      didAutofillSalary.current = true
+      return
+    }
+    if (walletStarting <= 0) {
+      didAutofillSalary.current = true
+      return
+    }
+    didAutofillSalary.current = true
+    void setProfile({ ...profile, salary: Math.floor(walletStarting) })
+  }, [walletLoaded, walletStarting, profile, setProfile])
+
+  const breakdown = useMemo(
+    () => computeTaxFromProfileAndWallet(profile, walletStarting),
+    [profile, walletStarting],
+  )
 
   function updateDeductions(partial: Partial<typeof profile.taxDeductions>) {
     setProfile({
@@ -33,8 +74,9 @@ export function TaxCalculator() {
     setAiLoading(true)
     try {
       const summary = `
-เงินเดือน (บาท/เดือน): ${profile.salary}
-เงินได้ทั้งปีโดยประมาณ: ${breakdown.annualGross}
+เงินเดือนในโปรไฟล์ (บาท/เดือน): ${profile.salary}
+ยอดตั้งต้นกระเป๋าเดือนนี้: ${walletStarting}
+เงินได้ทั้งปีโดยประมาณ (ฐานคำนวณ): ${breakdown.annualGross}
 ค่าลดหย่อนรวม: ${totalAnnualDeductions(profile)} (รวมประกันสังคมหลังจำกัดสูงสุด 9,000 บาท/ปี)
 เงินได้สุทธิสำหรับคำนวณภาษี: ${breakdown.netTaxableIncome}
 ภาษีประมาณการต่อปี: ${breakdown.taxAnnual}
@@ -62,13 +104,22 @@ export function TaxCalculator() {
         <p className="mt-1 text-slate-600 dark:text-slate-400">
           อัตราก้าวหน้า ปีภาษี 2567 — สำหรับประมาณการเบื้องต้นเท่านั้น
         </p>
+        <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
+          ระบบใช้ยอดตั้งต้นจากกระเป๋าเงินเป็นฐานคำนวณเมื่อยังไม่ได้ระบุเงินเดือนในโปรไฟล์
+          {profile.salary <= 0 ? (
+            <>
+              {' '}
+              — เงินได้ทั้งปีโดยประมาณ = ยอดตั้งต้นเดือนนี้ × 12 ({formatTHB(walletStarting * 12)})
+            </>
+          ) : null}
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ข้อมูลรายได้และค่าลดหย่อน</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            เงินเดือนเป็นฐานต่อเดือน ระบบคูณ 12 เพื่อหาเงินได้ทั้งปี
+            เงินเดือนเป็นฐานต่อเดือน ระบบคูณ 12 เพื่อหาเงินได้ทั้งปี — ถ้าเว้นว่างจะใช้ยอดตั้งต้นกระเป๋าเดือนปัจจุบัน
           </p>
 
           <label className="mt-4 block text-sm">

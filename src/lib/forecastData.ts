@@ -1,4 +1,5 @@
 import type { Transaction } from '../types'
+import type { WalletEntry } from './supabaseWallet'
 import { parseISODate } from './format'
 
 /** Inclusive calendar months: current month and the two before (3 months). */
@@ -30,6 +31,41 @@ export function expenseTotalsByCategoryForMonth(
     const d = parseISODate(t.date)
     if (d.getFullYear() !== year || d.getMonth() !== monthIndex0) continue
     by[t.category] = (by[t.category] ?? 0) + t.amount
+  }
+  return by
+}
+
+const monthKeyFromParts = (year: number, monthIndex0: number) =>
+  `${year}-${String(monthIndex0 + 1).padStart(2, '0')}`
+
+export function walletEntryInLastThreeMonths(e: WalletEntry, now: Date = new Date()): boolean {
+  const [y, m] = e.month.split('-').map(Number)
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return false
+  const entryMonthStart = new Date(y, m - 1, 1)
+  const ny = now.getFullYear()
+  const nm = now.getMonth()
+  const start = new Date(ny, nm - 2, 1)
+  const end = new Date(ny, nm + 1, 0, 23, 59, 59, 999)
+  return entryMonthStart >= start && entryMonthStart <= end
+}
+
+export function filterLastThreeMonthsWalletEntries(
+  entries: WalletEntry[],
+  now: Date = new Date(),
+): WalletEntry[] {
+  return entries.filter((e) => walletEntryInLastThreeMonths(e, now))
+}
+
+export function walletExpenseTotalsByCategoryForMonth(
+  entries: WalletEntry[],
+  year: number,
+  monthIndex0: number,
+): Record<string, number> {
+  const key = monthKeyFromParts(year, monthIndex0)
+  const by: Record<string, number> = {}
+  for (const e of entries) {
+    if (e.month !== key) continue
+    by[e.category] = (by[e.category] ?? 0) + e.amount
   }
   return by
 }

@@ -52,3 +52,42 @@ create policy "recurring_all" on public.recurring_transactions for all using (tr
 create policy "savings_goals_all" on public.savings_goals for all using (true) with check (true);
 create policy "user_profile_all" on public.user_profile for all using (true) with check (true);
 create policy "budget_limits_all" on public.budget_limits for all using (true) with check (true);
+
+-- Wallet (กระเป๋าเงิน) — monthly cash wallet separate from transactions
+create table if not exists public.monthly_wallet (
+  id uuid default gen_random_uuid() primary key,
+  month text not null unique,
+  starting_balance numeric not null,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.wallet_entries (
+  id uuid default gen_random_uuid() primary key,
+  month text not null,
+  name text not null,
+  category text not null,
+  amount numeric not null,
+  date text not null,
+  note text,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.wallet_category_budgets (
+  id uuid default gen_random_uuid() primary key,
+  month text not null,
+  category text not null,
+  budget numeric not null default 0,
+  created_at timestamp with time zone default now(),
+  unique (month, category)
+);
+
+create index if not exists wallet_entries_month_idx on public.wallet_entries (month);
+create index if not exists wallet_category_budgets_month_idx on public.wallet_category_budgets (month);
+
+alter table public.monthly_wallet enable row level security;
+alter table public.wallet_entries enable row level security;
+alter table public.wallet_category_budgets enable row level security;
+
+create policy "monthly_wallet_all" on public.monthly_wallet for all using (true) with check (true);
+create policy "wallet_entries_all" on public.wallet_entries for all using (true) with check (true);
+create policy "wallet_category_budgets_all" on public.wallet_category_budgets for all using (true) with check (true);

@@ -13,9 +13,7 @@ import { supabase } from './supabase'
 export const USER_PROFILE_ROW_ID = 'default'
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(
-    import.meta.env.VITE_SUPABASE_URL?.trim() && import.meta.env.VITE_SUPABASE_ANON_KEY?.trim(),
-  )
+  return true
 }
 
 export function cloneDefaultUserProfile(): UserProfile {

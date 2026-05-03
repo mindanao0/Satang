@@ -36,3 +36,12 @@ export function toISO(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+/** `YYYY-MM` → Thai month label e.g. พ.ค. 2569 */
+export function formatMonthKeyLabel(monthKey: string): string {
+  const [ys, ms] = monthKey.split('-')
+  const y = Number(ys)
+  const m = Number(ms)
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return monthKey
+  return formatMonthLabel(y, m - 1)
+}

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -16,51 +16,131 @@ import {
 import { useFinance } from '../context/FinanceContext'
 import { useToast } from '../context/ToastContext'
 import { useTheme } from '../context/ThemeContext'
-import { computeTaxFromProfile } from '../lib/tax'
-import { formatMonthLabel, formatTHB, parseISODate } from '../lib/format'
+import { computeTaxFromProfileAndWallet } from '../lib/tax'
+import { formatMonthLabel, formatTHB } from '../lib/format'
 import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
 import { EXPENSE_CATEGORIES } from '../types'
 import { DashboardPdfExportContent } from '../components/DashboardPdfExportContent'
 import { exportElementToPdf, exportTransactionsExcel } from '../lib/reportExport'
 import { getChartPalette } from '../lib/chartPalette'
-
-function isSameMonth(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
-}
+import { supabase } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabaseFinance'
+import {
+  fetchMonthlyWalletForMonth,
+  fetchWalletEntriesForMonth,
+  monthKeyFromDate,
+  type WalletEntry,
+} from '../lib/supabaseWallet'
 
 export function Dashboard() {
   const { transactions, profile, budgetLimits } = useFinance()
   const { showToast } = useToast()
   const { isDark } = useTheme()
   const cp = useMemo(() => getChartPalette(isDark), [isDark])
-  const tax = useMemo(() => computeTaxFromProfile(profile), [profile])
+
+  const [walletStarting, setWalletStarting] = useState(0)
+  const [walletEntries, setWalletEntries] = useState<WalletEntry[]>([])
+  const [walletBarData, setWalletBarData] = useState<{ label: string; รายรับ: number; รายจ่าย: number }[]>(
+    [],
+  )
+  const [walletLoadError, setWalletLoadError] = useState<string | null>(null)
+
+  const tax = useMemo(
+    () => computeTaxFromProfileAndWallet(profile, walletStarting),
+    [profile, walletStarting],
+  )
+
   const pdfExportRef = useRef<HTMLDivElement>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
 
-  const monthStats = useMemo(() => {
-    const now = new Date()
-    let income = 0
-    let expense = 0
-    const byCat: Record<string, number> = {}
+  const currentMonthKey = useMemo(() => monthKeyFromDate(new Date()), [])
 
-    for (const t of transactions) {
-      const dt = parseISODate(t.date)
-      if (!isSameMonth(dt, now)) continue
-      if (t.type === 'income') income += t.amount
-      else {
-        expense += t.amount
-        byCat[t.category] = (byCat[t.category] ?? 0) + t.amount
-      }
+  const refreshDashboardWallet = useCallback(async () => {
+    if (!isSupabaseConfigured()) return
+    const now = new Date()
+    const labels: { y: number; m: number }[] = []
+    const keys: string[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      keys.push(monthKeyFromDate(d))
+      labels.push({ y: d.getFullYear(), m: d.getMonth() })
     }
 
-    const displayIncome = income > 0 ? income : profile.salary
-    const savings = displayIncome - expense
+    const bundles = await Promise.all(
+      keys.map((mk) =>
+        Promise.all([fetchMonthlyWalletForMonth(mk), fetchWalletEntriesForMonth(mk)]),
+      ),
+    )
 
-    return { income: displayIncome, expense, savings, byCat }
-  }, [transactions, profile.salary])
+    let firstErr: string | null = null
+    const barRows: { label: string; รายรับ: number; รายจ่าย: number }[] = []
+    bundles.forEach(([mw, ent], idx) => {
+      const err = mw.error || ent.error
+      if (err && !firstErr) firstErr = err
+      const starting = mw.data?.startingBalance ?? 0
+      const spent = ent.data.reduce((s, e) => s + e.amount, 0)
+      const { y, m } = labels[idx]!
+      barRows.push({
+        label: formatMonthLabel(y, m),
+        รายรับ: starting,
+        รายจ่าย: spent,
+      })
+    })
 
-  const txSig = useMemo(() => JSON.stringify(transactions), [transactions])
+    const curIdx = 5
+    const [mwC, entC] = bundles[curIdx]!
+    const curErr = mwC.error || entC.error
+    setWalletLoadError(curErr || firstErr)
+    setWalletStarting(mwC.data?.startingBalance ?? 0)
+    setWalletEntries(entC.data)
+    setWalletBarData(barRows)
+  }, [])
+
+  useEffect(() => {
+    void refreshDashboardWallet()
+  }, [refreshDashboardWallet])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const ch = supabase
+      .channel(`dashboard-wallet-${currentMonthKey}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallet_entries', filter: `month=eq.${currentMonthKey}` },
+        () => void refreshDashboardWallet(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'monthly_wallet', filter: `month=eq.${currentMonthKey}` },
+        () => void refreshDashboardWallet(),
+      )
+      .subscribe()
+    return () => void supabase.removeChannel(ch)
+  }, [currentMonthKey, refreshDashboardWallet])
+
+  const walletSpent = useMemo(
+    () => walletEntries.reduce((s, e) => s + e.amount, 0),
+    [walletEntries],
+  )
+
+  const transactionsExpenseThisMonth = useMemo(() => {
+    return transactions
+      .filter((t) => t.type === 'expense' && t.date.slice(0, 7) === currentMonthKey)
+      .reduce((s, t) => s + t.amount, 0)
+  }, [transactions, currentMonthKey])
+
+  const monthStats = useMemo(() => {
+    const byCat: Record<string, number> = {}
+    for (const e of walletEntries) {
+      byCat[e.category] = (byCat[e.category] ?? 0) + e.amount
+    }
+    const expense = walletSpent + transactionsExpenseThisMonth
+    const savings = walletStarting - expense
+    return { expense, savings, byCat, walletSpent, transactionsExpenseThisMonth }
+  }, [walletEntries, walletSpent, walletStarting, transactionsExpenseThisMonth])
+
+  const walletSig = useMemo(() => JSON.stringify(walletEntries.map((e) => e.id)), [walletEntries])
 
   const pieData = useMemo(
     () =>
@@ -82,35 +162,11 @@ export function Dashboard() {
     })
   }, [budgetLimits, monthStats.byCat])
 
-  const barData = useMemo(() => {
-    const now = new Date()
-    const rows: { label: string; รายรับ: number; รายจ่าย: number }[] = []
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      let inc = 0
-      let exp = 0
-      for (const t of transactions) {
-        const dt = parseISODate(t.date)
-        if (dt.getFullYear() !== d.getFullYear() || dt.getMonth() !== d.getMonth()) continue
-        if (t.type === 'income') inc += t.amount
-        else exp += t.amount
-      }
-      const displayInc = inc > 0 ? inc : profile.salary
-      rows.push({
-        label: formatMonthLabel(d.getFullYear(), d.getMonth()),
-        รายรับ: displayInc,
-        รายจ่าย: exp,
-      })
-    }
-    return rows
-  }, [transactions, profile.salary])
-
-  const monthTransactions = useMemo(() => {
-    const now = new Date()
-    return transactions
-      .filter((t) => isSameMonth(parseISODate(t.date), now))
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [transactions])
+  const monthWalletRowsPdf = useMemo(
+    () =>
+      [...walletEntries].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [walletEntries],
+  )
 
   async function handleExportPdf() {
     const el = pdfExportRef.current
@@ -150,23 +206,20 @@ export function Dashboard() {
   const [aiError, setAiError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    const key = import.meta.env.VITE_GROQ_API_KEY
-    if (!key) {
-      setAiError('ตั้งค่า VITE_GROQ_API_KEY ใน .env เพื่อดูสรุป AI')
-      return
-    }
+  const monthlyForTaxHint = profile.salary > 0 ? profile.salary : walletStarting
 
+  useEffect(() => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
 
     const stats = `
-เงินเดือน (โปรไฟล์): ${profile.salary} บาท/เดือน
-เดือนนี้ — รายรับที่ใช้คำนวณ: ${monthStats.income}, รายจ่าย: ${monthStats.expense}, เงินเหลือออม: ${monthStats.savings}
+ฐานรายได้ต่อเดือนสำหรับภาษี (โปรไฟล์หรือยอดตั้งต้นกระเป๋า): ${monthlyForTaxHint} บาท/เดือน
+ยอดตั้งต้นกระเป๋าเดือนนี้: ${walletStarting}
+เดือนนี้ — รายจ่ายรวม: ${monthStats.expense} (กระเป๋าเงิน ${monthStats.walletSpent} + ธุรกรรม ${monthStats.transactionsExpenseThisMonth}), เงินเหลือ/ออม: ${monthStats.savings}
 ภาษีประมาณการต่อปี: ${tax.taxAnnual} บาท
-รายจ่ายตามหมวดเดือนนี้: ${JSON.stringify(monthStats.byCat)}
-จำนวนรายการทั้งหมด: ${transactions.length}
+รายจ่ายตามหมวด (กระเป๋าเงิน): ${JSON.stringify(monthStats.byCat)}
+จำนวนรายการกระเป๋าเดือนนี้: ${walletEntries.length}
 `
 
     setAiSummary('')
@@ -193,14 +246,16 @@ export function Dashboard() {
     })()
 
     return () => ac.abort()
-  }, [txSig, profile.salary, monthStats, tax.taxAnnual])
+  }, [walletSig, walletStarting, monthStats, tax.taxAnnual, monthlyForTaxHint, walletEntries.length])
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">หน้าหลัก</h1>
-          <p className="mt-1 text-slate-600 dark:text-slate-400">สรุปภาพรวมเดือนปัจจุบันและแนวโน้ม 6 เดือนล่าสุด</p>
+          <p className="mt-1 text-slate-600 dark:text-slate-400">
+            สรุปจากกระเป๋าเงิน (ยอดตั้งต้นเดือนนี้) และแนวโน้ม 6 เดือนล่าสุด
+          </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
           <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">ส่งออกรายงาน</span>
@@ -222,24 +277,38 @@ export function Dashboard() {
             </button>
           </div>
           <p className="max-w-xs text-right text-xs text-slate-500 dark:text-slate-400">
-            PDF: สรุปเดือนนี้และกราฟ · Excel: รายการทั้งหมด
+            PDF: สรุปกระเป๋าเงินเดือนนี้ · Excel: รายการธุรกรรมหลัก
           </p>
         </div>
       </div>
 
+      {walletLoadError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          โหลดข้อมูลกระเป๋าเงินไม่สำเร็จ: {walletLoadError}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="text-sm text-slate-500 dark:text-slate-400">เงินเดือน (โปรไฟล์)</div>
-          <div className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">
-            {formatTHB(profile.salary)}
+          <div className="text-sm text-slate-500 dark:text-slate-400">ยอดตั้งต้นเดือนนี้</div>
+          <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+            {formatTHB(walletStarting)}
           </div>
-          <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">ต่อเดือน</div>
+          <Link
+            to="/wallet"
+            className="mt-2 inline-block text-xs font-medium text-blue-800 hover:underline dark:text-sky-400"
+          >
+            ตั้งยอดในกระเป๋าเงิน
+          </Link>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="text-sm text-slate-500 dark:text-slate-400">รายจ่ายรวมเดือนนี้</div>
           <div className="mt-1 text-xl font-semibold text-red-700 dark:text-red-400">
             {formatTHB(monthStats.expense)}
           </div>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            กระเป๋าเงิน {formatTHB(monthStats.walletSpent)} + ธุรกรรม {formatTHB(monthStats.transactionsExpenseThisMonth)}
+          </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="text-sm text-slate-500 dark:text-slate-400">เงินออม (เดือนนี้)</div>
@@ -248,7 +317,7 @@ export function Dashboard() {
           >
             {formatTHB(monthStats.savings)}
           </div>
-          <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">รายรับที่ใช้ − รายจ่าย</div>
+          <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">ยอดตั้งต้น − รายจ่ายรวม</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="text-sm text-slate-500 dark:text-slate-400">ภาษีโดยประมาณ (ต่อปี)</div>
@@ -257,6 +326,9 @@ export function Dashboard() {
           </div>
           <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
             หัก ณ ที่จ่ายเฉลี่ย {formatTHB(tax.taxMonthlyWithholding)}/เดือน
+            {profile.salary <= 0 && walletStarting > 0 ? (
+              <span className="block">ประมาณจากยอดตั้งต้นกระเป๋า × 12</span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -347,13 +419,13 @@ export function Dashboard() {
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">รายรับและรายจ่ายรายเดือน (6 เดือนล่าสุด)</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ยอดตั้งต้นและรายจ่ายรายเดือน (6 เดือนล่าสุด)</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            หากไม่มีรายรับในบันทึก ระบบใช้เงินเดือนจากโปรไฟล์เป็นฐาน
+            แท่งเขียว = ยอดตั้งต้นกระเป๋าเดือนนั้น · แท่งแดง = รายจ่ายจากกระเป๋าเงิน
           </p>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+              <BarChart data={walletBarData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={cp.grid} />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: cp.tick }} />
                 <YAxis
@@ -397,15 +469,20 @@ export function Dashboard() {
         <DashboardPdfExportContent
           ref={pdfExportRef}
           monthLabel={formatMonthLabel(new Date().getFullYear(), new Date().getMonth())}
-          salary={profile.salary}
-          income={monthStats.income}
+          startingBalance={walletStarting}
           expense={monthStats.expense}
           savings={monthStats.savings}
           taxAnnual={tax.taxAnnual}
           taxWithholding={tax.taxMonthlyWithholding}
           pieData={pieData}
-          barData={barData}
-          monthTransactions={monthTransactions}
+          barData={walletBarData}
+          walletMonthRows={monthWalletRowsPdf.map((e) => ({
+            date: e.date,
+            name: e.name,
+            category: e.category,
+            amount: e.amount,
+            note: e.note,
+          }))}
         />
       </div>
     </div>

@@ -160,11 +160,6 @@ export function NetWorth() {
   }
 
   async function runAiAnalysis() {
-    const key = import.meta.env.VITE_GROQ_API_KEY
-    if (!key) {
-      setAiError('ตั้งค่า VITE_GROQ_API_KEY ใน .env เพื่อใช้วิเคราะห์ AI')
-      return
-    }
     setAiError(null)
     setAiText('')
     setAiLoading(true)

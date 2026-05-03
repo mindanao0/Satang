@@ -11,7 +11,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { Transaction } from '../types'
 import { formatTHB } from '../lib/format'
 
 const PIE_COLORS = [
@@ -25,32 +24,38 @@ const PIE_COLORS = [
   '#64748b',
 ]
 
+export type DashboardPdfWalletRow = {
+  date: string
+  name: string
+  category: string
+  amount: number
+  note: string
+}
+
 export type DashboardPdfExportContentProps = {
   monthLabel: string
-  salary: number
-  income: number
+  startingBalance: number
   expense: number
   savings: number
   taxAnnual: number
   taxWithholding: number
   pieData: { name: string; value: number }[]
   barData: { label: string; รายรับ: number; รายจ่าย: number }[]
-  monthTransactions: Transaction[]
+  walletMonthRows: DashboardPdfWalletRow[]
 }
 
 export const DashboardPdfExportContent = forwardRef<HTMLDivElement, DashboardPdfExportContentProps>(
   function DashboardPdfExportContent(
     {
       monthLabel,
-      salary,
-      income,
+      startingBalance,
       expense,
       savings,
       taxAnnual,
       taxWithholding,
       pieData,
       barData,
-      monthTransactions,
+      walletMonthRows,
     },
     ref,
   ) {
@@ -67,26 +72,22 @@ export const DashboardPdfExportContent = forwardRef<HTMLDivElement, DashboardPdf
 
         <div className="mt-6 grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">เงินเดือน (โปรไฟล์)</div>
-            <div className="mt-1 text-lg font-semibold">{formatTHB(salary)}</div>
-          </div>
-          <div className="rounded-lg border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">รายรับที่ใช้ (เดือนนี้)</div>
-            <div className="mt-1 text-lg font-semibold text-green-800">{formatTHB(income)}</div>
+            <div className="text-xs text-slate-500">ยอดตั้งต้นเดือนนี้ (กระเป๋าเงิน)</div>
+            <div className="mt-1 text-lg font-semibold">{formatTHB(startingBalance)}</div>
           </div>
           <div className="rounded-lg border border-slate-200 p-3">
             <div className="text-xs text-slate-500">รายจ่ายรวม (เดือนนี้)</div>
             <div className="mt-1 text-lg font-semibold text-red-700">{formatTHB(expense)}</div>
           </div>
           <div className="rounded-lg border border-slate-200 p-3">
-            <div className="text-xs text-slate-500">เงินออม (เดือนนี้)</div>
+            <div className="text-xs text-slate-500">เงินออม / คงเหลือ (เดือนนี้)</div>
             <div
               className={`mt-1 text-lg font-semibold ${savings >= 0 ? 'text-green-700' : 'text-red-700'}`}
             >
               {formatTHB(savings)}
             </div>
           </div>
-          <div className="col-span-2 rounded-lg border border-slate-200 p-3">
+          <div className="rounded-lg border border-slate-200 p-3">
             <div className="text-xs text-slate-500">ภาษีโดยประมาณ (ต่อปี)</div>
             <div className="mt-1 text-lg font-semibold">
               {formatTHB(taxAnnual)}{' '}
@@ -159,7 +160,7 @@ export const DashboardPdfExportContent = forwardRef<HTMLDivElement, DashboardPdf
           </div>
         )}
 
-        <h2 className="mb-2 mt-8 text-base font-semibold">รายรับและรายจ่ายรายเดือน (6 เดือนล่าสุด)</h2>
+        <h2 className="mb-2 mt-8 text-base font-semibold">ยอดตั้งต้นและรายจ่ายรายเดือน (6 เดือนล่าสุด)</h2>
         <BarChart width={758} height={260} data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
@@ -170,37 +171,34 @@ export const DashboardPdfExportContent = forwardRef<HTMLDivElement, DashboardPdf
           <Bar dataKey="รายจ่าย" fill="#b91c1c" radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
 
-        <h2 className="mb-2 mt-8 text-base font-semibold">รายการธุรกรรม (เดือนนี้)</h2>
+        <h2 className="mb-2 mt-8 text-base font-semibold">รายการกระเป๋าเงิน (เดือนนี้)</h2>
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="border-b-2 border-slate-300 bg-slate-50 text-slate-600">
               <th className="px-2 py-2 text-left font-medium">วันที่</th>
-              <th className="px-2 py-2 text-left font-medium">ประเภท</th>
+              <th className="px-2 py-2 text-left font-medium">ชื่อ</th>
               <th className="px-2 py-2 text-left font-medium">หมวด</th>
               <th className="px-2 py-2 text-right font-medium">จำนวน</th>
               <th className="px-2 py-2 text-left font-medium">หมายเหตุ</th>
             </tr>
           </thead>
           <tbody>
-            {monthTransactions.length === 0 ? (
+            {walletMonthRows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-2 py-6 text-center text-slate-500">
                   ไม่มีรายการในเดือนนี้
                 </td>
               </tr>
             ) : (
-              monthTransactions.map((t) => (
-                <tr key={t.id} className="border-b border-slate-100">
-                  <td className="px-2 py-1.5 text-slate-800">{t.date}</td>
-                  <td className="px-2 py-1.5">{t.type === 'income' ? 'รายรับ' : 'รายจ่าย'}</td>
-                  <td className="px-2 py-1.5 text-slate-700">{t.category}</td>
-                  <td
-                    className={`px-2 py-1.5 text-right font-medium ${t.type === 'income' ? 'text-green-800' : 'text-red-800'}`}
-                  >
-                    {t.type === 'income' ? '+' : '−'}
-                    {formatTHB(t.amount)}
+              walletMonthRows.map((r, i) => (
+                <tr key={`${r.date}-${i}-${r.name}`} className="border-b border-slate-100">
+                  <td className="px-2 py-1.5 text-slate-800">{r.date}</td>
+                  <td className="px-2 py-1.5 text-slate-800">{r.name}</td>
+                  <td className="px-2 py-1.5 text-slate-700">{r.category}</td>
+                  <td className="px-2 py-1.5 text-right font-medium text-red-800">
+                    −{formatTHB(r.amount)}
                   </td>
-                  <td className="max-w-[180px] truncate px-2 py-1.5 text-slate-600">{t.note || '—'}</td>
+                  <td className="max-w-[180px] truncate px-2 py-1.5 text-slate-600">{r.note || '—'}</td>
                 </tr>
               ))
             )}

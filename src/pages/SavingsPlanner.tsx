@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFinance } from '../context/FinanceContext'
 import { useToast } from '../context/ToastContext'
 import type { SavingsGoal } from '../types'
@@ -6,6 +6,12 @@ import { monthsBetween, projectedBalanceAtDate, requiredMonthlyPayment } from '.
 import { formatTHB } from '../lib/format'
 import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
+import { isSupabaseConfigured } from '../lib/supabaseFinance'
+import {
+  fetchMonthlyWalletForMonth,
+  fetchWalletEntriesForMonth,
+  monthKeyFromDate,
+} from '../lib/supabaseWallet'
 
 export function SavingsPlanner() {
   const { savingsGoals, upsertGoal, removeGoal } = useFinance()
@@ -18,11 +24,44 @@ export function SavingsPlanner() {
   const [monthlyContribution, setMonthlyContribution] = useState('')
   const [annualReturn, setAnnualReturn] = useState('5')
 
+  const [walletRemaining, setWalletRemaining] = useState(0)
+  const [walletReady, setWalletReady] = useState(false)
+  const prefilledContrib = useRef(false)
+
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
 
   const returnNum = Number(annualReturn) || 0
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isSupabaseConfigured()) {
+        setWalletReady(true)
+        return
+      }
+      const mk = monthKeyFromDate(new Date())
+      const [mw, ent] = await Promise.all([
+        fetchMonthlyWalletForMonth(mk),
+        fetchWalletEntriesForMonth(mk),
+      ])
+      if (cancelled) return
+      const start = mw.data?.startingBalance ?? 0
+      const spent = ent.data.reduce((s, e) => s + e.amount, 0)
+      setWalletRemaining(start - spent)
+      setWalletReady(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!walletReady || prefilledContrib.current) return
+    prefilledContrib.current = true
+    setMonthlyContribution(String(Math.max(0, Math.floor(walletRemaining))))
+  }, [walletReady, walletRemaining])
 
   const goalInsights = useMemo(() => {
     const map = new Map<string, { months: number; required: number; projected: number }>()
@@ -123,6 +162,14 @@ export function SavingsPlanner() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">วางแผนออมเงิน</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-400">
           ตั้งเป้าหมาย คำนวณยอดที่ต้องออมต่อเดือน และดูภาพรวมดอกเบี้ยทบต้น
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 text-sm text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/35 dark:text-emerald-100">
+        <p className="font-medium">เงินที่พอใช้ออมได้โดยประมาณ (จากกระเป๋าเงินเดือนนี้)</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums">{formatTHB(Math.max(0, walletRemaining))}</p>
+        <p className="mt-1 text-xs opacity-90">
+          คำนวณจากยอดตั้งต้นกระเป๋า − รายจ่ายที่บันทึกแล้ว — ใช้เป็นค่าเริ่มต้นช่อง “เงินออมปัจจุบันต่อเดือน”
         </p>
       </div>
 

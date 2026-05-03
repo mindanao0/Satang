@@ -59,6 +59,20 @@ export interface TaxBreakdown {
   netIncomeAfterTaxMonthly: number
 }
 
+/** ฐานเงินได้ต่อเดือนสำหรับภาษี: ใช้เงินเดือนในโปรไฟล์ถ้ามี ไม่เช่นนั้นใช้ยอดตั้งต้นกระเป๋าเดือนปัจจุบัน */
+export function monthlySalaryForTax(profile: UserProfile, walletStartingBalance: number): number {
+  if (profile.salary > 0) return profile.salary
+  return walletStartingBalance
+}
+
+export function computeTaxFromProfileAndWallet(
+  profile: UserProfile,
+  walletStartingBalance: number,
+): TaxBreakdown {
+  const monthly = monthlySalaryForTax(profile, walletStartingBalance)
+  return computeTaxFromProfile({ ...profile, salary: monthly })
+}
+
 export function computeTaxFromProfile(profile: UserProfile): TaxBreakdown {
   const annualGross = annualGrossFromMonthlySalary(profile.salary)
   const totalDeductions = totalAnnualDeductions(profile)

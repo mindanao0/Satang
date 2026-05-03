@@ -1,17 +1,24 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useFinance } from '../context/FinanceContext'
 import { streamGroq } from '../lib/groq'
 import {
-  expenseTotalsByCategoryForMonth,
-  filterLastThreeMonthsExpenses,
+  filterLastThreeMonthsWalletEntries,
   splitForecastResponse,
+  walletExpenseTotalsByCategoryForMonth,
 } from '../lib/forecastData'
 import { formatMonthLabel, formatTHB } from '../lib/format'
 import { Spinner } from '../components/Spinner'
 import { EXPENSE_CATEGORIES } from '../types'
+import { isSupabaseConfigured } from '../lib/supabaseFinance'
+import {
+  fetchMonthlyWalletForMonth,
+  fetchWalletEntriesForMonths,
+  monthKeyFromDate,
+  type WalletEntry,
+} from '../lib/supabaseWallet'
 
 const FORECAST_SYSTEM_PROMPT =
-  'คุณคือที่ปรึกษาการเงิน วิเคราะห์ข้อมูลรายจ่ายย้อนหลัง 3 เดือน แล้วคาดการณ์รายจ่ายเดือนหน้าแต่ละหมวด พร้อมบอกหมวดที่มีแนวโน้มเพิ่มขึ้น และให้คำแนะนำ ตอบเป็นภาษาไทย'
+  'คุณคือที่ปรึกษาการเงิน วิเคราะห์ข้อมูลรายจ่ายจากกระเป๋าเงินย้อนหลัง 3 เดือน แล้วคาดการณ์รายจ่ายเดือนหน้าแต่ละหมวด พร้อมบอกหมวดที่มีแนวโน้มเพิ่มขึ้น และให้คำแนะนำ ตอบเป็นภาษาไทย'
 
 function sortCategoryKeys(keys: string[]): string[] {
   const order = new Map<string, number>(EXPENSE_CATEGORIES.map((c, i) => [c, i]))
@@ -23,8 +30,17 @@ function sortCategoryKeys(keys: string[]): string[] {
   })
 }
 
+function lastNMonthKeys(n: number, now: Date): string[] {
+  const keys: string[] = []
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    keys.push(monthKeyFromDate(d))
+  }
+  return keys
+}
+
 export function AIAnalysis() {
-  const { transactions, profile } = useFinance()
+  const { profile } = useFinance()
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +51,10 @@ export function AIAnalysis() {
   const [forecastError, setForecastError] = useState<string | null>(null)
   const [forecastStreaming, setForecastStreaming] = useState('')
 
+  const [walletEntries3m, setWalletEntries3m] = useState<WalletEntry[]>([])
+  const [walletStartingMonth, setWalletStartingMonth] = useState(0)
+  const [walletLoadError, setWalletLoadError] = useState<string | null>(null)
+
   const now = useMemo(() => new Date(), [])
   const nextMonth = useMemo(() => {
     const d = new Date()
@@ -44,9 +64,33 @@ export function AIAnalysis() {
   const thisMonthLabel = formatMonthLabel(now.getFullYear(), now.getMonth())
   const nextMonthLabel = formatMonthLabel(nextMonth.getFullYear(), nextMonth.getMonth())
 
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isSupabaseConfigured()) {
+        setWalletLoadError('ยังไม่ได้ตั้งค่า Supabase')
+        return
+      }
+      const keys = lastNMonthKeys(3, now)
+      const [entRes, mwRes] = await Promise.all([
+        fetchWalletEntriesForMonths(keys),
+        fetchMonthlyWalletForMonth(monthKeyFromDate(now)),
+      ])
+      if (cancelled) return
+      setWalletLoadError(entRes.error || mwRes.error)
+      setWalletEntries3m(entRes.data)
+      setWalletStartingMonth(mwRes.data?.startingBalance ?? 0)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [now])
+
+  const monthlyIncomeHint = profile.salary > 0 ? profile.salary : walletStartingMonth
+
   const thisMonthByCategory = useMemo(
-    () => expenseTotalsByCategoryForMonth(transactions, now.getFullYear(), now.getMonth()),
-    [transactions, now],
+    () => walletExpenseTotalsByCategoryForMonth(walletEntries3m, now.getFullYear(), now.getMonth()),
+    [walletEntries3m, now],
   )
 
   const comparisonCategories = useMemo(() => {
@@ -59,24 +103,26 @@ export function AIAnalysis() {
   async function run() {
     setError(null)
     setText('')
-    const expenses = transactions.filter((t) => t.type === 'expense')
-    if (expenses.length === 0) {
-      setError('ยังไม่มีข้อมูลรายจ่ายให้วิเคราะห์')
+    const slice = filterLastThreeMonthsWalletEntries(walletEntries3m, now)
+    if (slice.length === 0) {
+      setError('ยังไม่มีข้อมูลรายจ่ายในกระเป๋าเงินช่วง 3 เดือนล่าสุด')
       return
     }
 
     setLoading(true)
     try {
       const payload = JSON.stringify(
-        expenses.map((t) => ({
-          category: t.category,
-          amount: t.amount,
-          date: t.date,
-          note: t.note,
+        slice.map((e) => ({
+          month: e.month,
+          name: e.name,
+          category: e.category,
+          amount: e.amount,
+          date: e.date,
+          note: e.note,
         })),
       )
       await streamGroq(
-        `นี่คือรายการรายจ่ายทั้งหมดของผู้ใช้ (JSON): ${payload}\nเงินเดือนจากโปรไฟล์: ${profile.salary} บาท/เดือน\n\nกรุณาตอบเป็นภาษาไทย โดยมีหัวข้อชัดเจนดังนี้:\n1) สรุปพฤติกรรมการใช้จ่าย\n2) หมวดที่ใช้เงินมากเกินไป (ถ้ามี) และเหตุผลสั้นๆ\n3) คำแนะนำลดค่าใช้จ่าย 3-5 ข้อ\n4) เปรียบเทียบกับหลัก 50/30/20 (ความจำเป็น/ความต้องการ/การออมและหนี้) ว่าประมาณการจากข้อมูลนี้เป็นอย่างไร\n\nไม่ต้องใช้ markdown`,
+        `นี่คือรายการใช้จ่ายจากกระเป๋าเงิน (JSON) ย้อนหลัง 3 เดือน:\n${payload}\nฐานรายได้ต่อเดือน (โปรไฟล์หรือยอดตั้งต้นกระเป๋าเดือนนี้): ${monthlyIncomeHint} บาท/เดือน\n\nกรุณาตอบเป็นภาษาไทย โดยมีหัวข้อชัดเจนดังนี้:\n1) สรุปพฤติกรรมการใช้จ่าย\n2) หมวดที่ใช้เงินมากเกินไป (ถ้ามี) และเหตุผลสั้นๆ\n3) คำแนะนำลดค่าใช้จ่าย 3-5 ข้อ\n4) เปรียบเทียบกับหลัก 50/30/20 (ความจำเป็น/ความต้องการ/การออมและหนี้) ว่าประมาณการจากข้อมูลนี้เป็นอย่างไร\n\nไม่ต้องใช้ markdown`,
         'คุณเป็นที่ปรึกษาการเงิน ให้คำแนะนำที่นุ่มนวล เป็นจริง และเป็นภาษาไทย',
         (d) => setText((s) => s + d),
         4096,
@@ -94,23 +140,24 @@ export function AIAnalysis() {
     setForecastByCategory(null)
     setForecastStreaming('')
 
-    const slice = filterLastThreeMonthsExpenses(transactions)
+    const slice = filterLastThreeMonthsWalletEntries(walletEntries3m, now)
     if (slice.length === 0) {
       setForecastError('ไม่มีรายจ่ายในช่วง 3 เดือนล่าสุดให้คาดการณ์')
       return
     }
 
     const payload = JSON.stringify(
-      slice.map((t) => ({
-        type: t.type,
-        category: t.category,
-        amount: t.amount,
-        date: t.date,
-        note: t.note,
+      slice.map((e) => ({
+        month: e.month,
+        name: e.name,
+        category: e.category,
+        amount: e.amount,
+        date: e.date,
+        note: e.note,
       })),
     )
 
-    const userPrompt = `นี่คือรายการธุรกรรมรายจ่ายย้อนหลัง 3 เดือนล่าสุด (JSON):\n${payload}\n\nเงินเดือนจากโปรไฟล์: ${profile.salary} บาท/เดือน\n\nให้คุณวิเคราะห์และตอบเป็นภาษาไทย โดย:\n1) สรุปแนวโน้มรายจ่ายรายหมวดจากข้อมูล 3 เดือน\n2) คาดการณ์รายจ่ายเดือนหน้าแต่ละหมวดเป็นตัวเลขบาท (อธิบายเหตุผลสั้นๆ ได้)\n3) ระบุหมวดที่มีแนวโน้มเพิ่มขึ้นและข้อเสนอแนะการจัดการ\n\nสำคัญ: หลังข้อความอธิบายทั้งหมด ให้ขึ้นบรรทัดใหม่แล้วพิมพ์บรรทัดเดียวในรูปแบบนี้เท่านั้น (ไม่ใช้ markdown):\nFORECAST_JSON:{"ชื่อหมวด":จำนวนบาท,...}\nโดย key เป็นชื่อหมวดภาษาไทยตามข้อมูล และ value เป็นตัวเลขรวมคาดการณ์รายจ่ายเดือนหน้าเป็นบาท (ตัวเลขล้วน)`
+    const userPrompt = `นี่คือรายการใช้จ่ายจากกระเป๋าเงินย้อนหลัง 3 เดือนล่าสุด (JSON):\n${payload}\n\nฐานรายได้ต่อเดือน (โปรไฟล์หรือยอดตั้งต้นกระเป๋าเดือนนี้): ${monthlyIncomeHint} บาท/เดือน\n\nให้คุณวิเคราะห์และตอบเป็นภาษาไทย โดย:\n1) สรุปแนวโน้มรายจ่ายรายหมวดจากข้อมูล 3 เดือน\n2) คาดการณ์รายจ่ายเดือนหน้าแต่ละหมวดเป็นตัวเลขบาท (อธิบายเหตุผลสั้นๆ ได้)\n3) ระบุหมวดที่มีแนวโน้มเพิ่มขึ้นและข้อเสนอแนะการจัดการ\n\nสำคัญ: หลังข้อความอธิบายทั้งหมด ให้ขึ้นบรรทัดใหม่แล้วพิมพ์บรรทัดเดียวในรูปแบบนี้เท่านั้น (ไม่ใช้ markdown):\nFORECAST_JSON:{"ชื่อหมวด":จำนวนบาท,...}\nโดย key เป็นชื่อหมวดภาษาไทยตามข้อมูล และ value เป็นตัวเลขรวมคาดการณ์รายจ่ายเดือนหน้าเป็นบาท (ตัวเลขล้วน)`
 
     setForecastLoading(true)
     let acc = ''
@@ -140,9 +187,15 @@ export function AIAnalysis() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">วิเคราะห์การใช้จ่ายด้วย AI</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-400">
-          ส่งข้อมูลรายจ่ายทั้งหมดไปให้ AI ช่วยสรุปและให้คำแนะนำ
+          ส่งข้อมูลรายจ่ายจากกระเป๋าเงิน (ย้อนหลัง 3 เดือน) ให้ AI ช่วยสรุปและให้คำแนะนำ
         </p>
       </div>
+
+      {walletLoadError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          โหลดกระเป๋าเงิน: {walletLoadError}
+        </div>
+      ) : null}
 
       <button
         type="button"
@@ -170,7 +223,7 @@ export function AIAnalysis() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">คาดการณ์เดือนหน้า</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          ใช้รายจ่ายย้อนหลัง 3 เดือน (รวมเดือนปัจจุบัน) ส่งให้ AI คาดการณ์รายจ่ายเดือนถัดไปรายหมวด
+          ใช้รายจ่ายจากกระเป๋าเงินย้อนหลัง 3 เดือน (รวมเดือนปัจจุบัน) ส่งให้ AI คาดการณ์รายจ่ายเดือนถัดไปรายหมวด
         </p>
         <button
           type="button"

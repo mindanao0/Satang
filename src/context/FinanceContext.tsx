@@ -43,7 +43,7 @@ type FinanceContextValue = {
   /** True while initial Supabase fetch is in progress. */
   financeHydrating: boolean
   setTransactions: (t: Transaction[]) => void
-  setProfile: (p: UserProfile) => void
+  setProfile: (p: UserProfile) => Promise<{ error: string | null }>
   setSavingsGoals: (g: SavingsGoal[]) => void
   addRecurringItem: (item: Omit<RecurringTransaction, 'id' | 'enabled'> & { enabled?: boolean }) => void
   setRecurringEnabled: (id: string, enabled: boolean) => void
@@ -228,19 +228,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [showToast],
   )
 
-  const setProfile = useCallback(
-    (p: UserProfile) => {
-      void (async () => {
-        const { error } = await db.upsertUserProfile(p)
-        if (error) {
-          showToast(`บันทึกโปรไฟล์ไม่สำเร็จ: ${error}`)
-          return
-        }
-        setProfileState(p)
-      })()
-    },
-    [showToast],
-  )
+  const setProfile = useCallback(async (p: UserProfile) => {
+    const { error } = await db.upsertUserProfile(p)
+    if (error) {
+      showToast(`บันทึกโปรไฟล์ไม่สำเร็จ: ${error}`)
+      return { error }
+    }
+    setProfileState(p)
+    return { error: null }
+  }, [showToast])
 
   const setSavingsGoals = useCallback(
     (g: SavingsGoal[]) => {
