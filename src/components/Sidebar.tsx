@@ -64,20 +64,6 @@ const items = [
     ),
   },
   {
-    to: '/wallet',
-    label: 'กระเป๋าเงิน',
-    icon: (
-      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M3 7a2 2 0 012-2h11.172a2 2 0 011.414.586l1.828 1.828A2 2 0 0120 8.828V17a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm16 0v3a1 1 0 001 1h1M7 14h.01M11 14h2"
-        />
-      </svg>
-    ),
-  },
-  {
     to: '/tax',
     label: 'คำนวณภาษี',
     icon: (

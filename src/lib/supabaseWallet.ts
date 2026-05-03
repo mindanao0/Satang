@@ -152,7 +152,7 @@ export async function insertWalletEntry(entry: {
 
 export async function updateWalletEntry(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'category' | 'amount' | 'date' | 'note'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'category' | 'amount' | 'date' | 'note' | 'month'>>,
 ): Promise<{ error: string | null }> {
   const row: Record<string, unknown> = {}
   if (patch.name !== undefined) row.name = patch.name
@@ -160,6 +160,7 @@ export async function updateWalletEntry(
   if (patch.amount !== undefined) row.amount = patch.amount
   if (patch.date !== undefined) row.date = patch.date
   if (patch.note !== undefined) row.note = patch.note || null
+  if (patch.month !== undefined) row.month = patch.month
   if (Object.keys(row).length === 0) return { error: null }
   const { error } = await supabase.from('wallet_entries').update(row).eq('id', id)
   return { error: error?.message ?? null }

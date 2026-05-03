@@ -11,7 +11,6 @@ import { SavingsPlanner } from './pages/SavingsPlanner'
 import { Budget } from './pages/Budget'
 import { NetWorth } from './pages/NetWorth'
 import { Settings } from './pages/Settings'
-import { Wallet } from './pages/Wallet'
 
 export default function App() {
   return (
@@ -25,7 +24,7 @@ export default function App() {
                 <Route path="transactions" element={<Transactions />} />
                 <Route path="analysis" element={<AIAnalysis />} />
                 <Route path="budget" element={<Budget />} />
-                <Route path="wallet" element={<Wallet />} />
+                <Route path="wallet" element={<Navigate to="/transactions" replace />} />
                 <Route path="tax" element={<TaxCalculator />} />
                 <Route path="savings" element={<SavingsPlanner />} />
                 <Route path="wealth" element={<NetWorth />} />

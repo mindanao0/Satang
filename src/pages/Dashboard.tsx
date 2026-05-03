@@ -292,10 +292,10 @@ export function Dashboard() {
             {formatTHB(walletStarting)}
           </div>
           <Link
-            to="/wallet"
+            to="/transactions"
             className="mt-2 inline-block text-xs font-medium text-blue-800 hover:underline dark:text-sky-400"
           >
-            ตั้งยอดในกระเป๋าเงิน
+            ตั้งยอดในรายรับ-รายจ่าย
           </Link>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
