@@ -262,20 +262,31 @@ export async function upsertUserProfile(p: UserProfile): Promise<{ error: string
   const payload = userProfileDbPayload(p)
   console.log('[Supabase] user_profile save payload:', JSON.stringify(payload, null, 2))
 
+  console.log('[DEBUG] Starting upsertUserProfile')
+
   const { data: existing, error: selErr } = await supabase
     .from('user_profile')
     .select('id')
     .limit(1)
     .maybeSingle()
 
-  if (selErr) return { error: formatSupabaseError(selErr) }
+  console.log('[DEBUG] existing row:', JSON.stringify(existing))
+
+  if (selErr) {
+    console.log('[DEBUG] Error:', JSON.stringify(selErr))
+    return { error: formatSupabaseError(selErr) }
+  }
 
   if (existing) {
+    console.log('[DEBUG] Updating id:', existing.id, 'payload:', JSON.stringify(payload))
     const { error } = await supabase.from('user_profile').update(payload).eq('id', existing.id)
+    if (error) console.log('[DEBUG] Error:', JSON.stringify(error))
     return { error: formatSupabaseError(error) }
   }
 
+  console.log('[DEBUG] Inserting payload:', JSON.stringify(payload))
   const { error } = await supabase.from('user_profile').insert(payload)
+  if (error) console.log('[DEBUG] Error:', JSON.stringify(error))
   return { error: formatSupabaseError(error) }
 }
 
