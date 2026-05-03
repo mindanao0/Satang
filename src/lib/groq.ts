@@ -1,9 +1,7 @@
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL = 'llama-3.3-70b-versatile'
 
-function getApiKey(): string {
-  return import.meta.env.VITE_GROQ_API_KEY as string
-}
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY ?? 'YOUR_GROQ_KEY'
 
 export async function callGroq(
   messages: { role: string; content: string }[],
@@ -14,7 +12,7 @@ export async function callGroq(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getApiKey()}`,
+      Authorization: `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify({
       model: MODEL,
@@ -95,7 +93,7 @@ export async function streamGroqChat(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getApiKey()}`,
+      Authorization: `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify({
       model: MODEL,
