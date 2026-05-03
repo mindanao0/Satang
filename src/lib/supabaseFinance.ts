@@ -12,10 +12,6 @@ import { supabase } from './supabase'
 /** Single-tenant row id for `user_profile`. */
 export const USER_PROFILE_ROW_ID = 'default'
 
-export function isSupabaseConfigured(): boolean {
-  return true
-}
-
 export function cloneDefaultUserProfile(): UserProfile {
   return {
     salary: 0,

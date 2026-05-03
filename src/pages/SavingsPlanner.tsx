@@ -6,7 +6,6 @@ import { monthsBetween, projectedBalanceAtDate, requiredMonthlyPayment } from '.
 import { formatTHB } from '../lib/format'
 import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
-import { isSupabaseConfigured } from '../lib/supabaseFinance'
 import {
   fetchMonthlyWalletForMonth,
   fetchWalletEntriesForMonth,
@@ -37,10 +36,6 @@ export function SavingsPlanner() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!isSupabaseConfigured()) {
-        setWalletReady(true)
-        return
-      }
       const mk = monthKeyFromDate(new Date())
       const [mw, ent] = await Promise.all([
         fetchMonthlyWalletForMonth(mk),

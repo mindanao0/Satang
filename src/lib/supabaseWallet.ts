@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import { isSupabaseConfigured } from './supabaseFinance'
 
 export const WALLET_CATEGORIES = [
   'อาหาร',
@@ -84,7 +83,6 @@ export function mapRowToCategoryBudget(r: Record<string, unknown>): WalletCatego
 export async function fetchMonthlyWalletForMonth(
   month: string,
 ): Promise<{ data: MonthlyWallet | null; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: null, error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { data, error } = await supabase.from('monthly_wallet').select('*').eq('month', month).maybeSingle()
   if (error) return { data: null, error: error.message }
   return { data: data ? mapRowToMonthlyWallet(data as Record<string, unknown>) : null, error: null }
@@ -94,7 +92,6 @@ export async function upsertMonthlyWalletStartingBalance(
   month: string,
   startingBalance: number,
 ): Promise<{ error: string | null }> {
-  if (!isSupabaseConfigured()) return { error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { error } = await supabase.from('monthly_wallet').upsert(
     { month, starting_balance: startingBalance },
     { onConflict: 'month' },
@@ -105,7 +102,6 @@ export async function upsertMonthlyWalletStartingBalance(
 export async function fetchWalletEntriesForMonths(
   months: string[],
 ): Promise<{ data: WalletEntry[]; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: [], error: 'ยังไม่ได้ตั้งค่า Supabase' }
   if (months.length === 0) return { data: [], error: null }
   const { data, error } = await supabase
     .from('wallet_entries')
@@ -120,7 +116,6 @@ export async function fetchWalletEntriesForMonths(
 export async function fetchWalletEntriesForMonth(
   month: string,
 ): Promise<{ data: WalletEntry[]; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: [], error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { data, error } = await supabase
     .from('wallet_entries')
     .select('*')
@@ -139,7 +134,6 @@ export async function insertWalletEntry(entry: {
   date: string
   note: string
 }): Promise<{ data: WalletEntry | null; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: null, error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { data, error } = await supabase
     .from('wallet_entries')
     .insert({
@@ -160,7 +154,6 @@ export async function updateWalletEntry(
   id: string,
   patch: Partial<Pick<WalletEntry, 'name' | 'category' | 'amount' | 'date' | 'note'>>,
 ): Promise<{ error: string | null }> {
-  if (!isSupabaseConfigured()) return { error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const row: Record<string, unknown> = {}
   if (patch.name !== undefined) row.name = patch.name
   if (patch.category !== undefined) row.category = patch.category
@@ -173,7 +166,6 @@ export async function updateWalletEntry(
 }
 
 export async function deleteWalletEntry(id: string): Promise<{ error: string | null }> {
-  if (!isSupabaseConfigured()) return { error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { error } = await supabase.from('wallet_entries').delete().eq('id', id)
   return { error: error?.message ?? null }
 }
@@ -181,7 +173,6 @@ export async function deleteWalletEntry(id: string): Promise<{ error: string | n
 export async function fetchWalletCategoryBudgetsForMonth(
   month: string,
 ): Promise<{ data: WalletCategoryBudget[]; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: [], error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const { data, error } = await supabase.from('wallet_category_budgets').select('*').eq('month', month)
   if (error) return { data: [], error: error.message }
   return { data: (data ?? []).map((r) => mapRowToCategoryBudget(r as Record<string, unknown>)), error: null }
@@ -191,7 +182,6 @@ export async function persistWalletCategoryBudgets(
   month: string,
   budgets: Record<string, number>,
 ): Promise<{ error: string | null }> {
-  if (!isSupabaseConfigured()) return { error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const rows: { month: string; category: string; budget: number }[] = []
   for (const cat of WALLET_CATEGORIES) {
     const v = budgets[cat]
@@ -228,7 +218,6 @@ export async function persistWalletCategoryBudgets(
 }
 
 export async function fetchWalletMonthKeys(): Promise<{ data: string[]; error: string | null }> {
-  if (!isSupabaseConfigured()) return { data: [], error: 'ยังไม่ได้ตั้งค่า Supabase' }
   const [w, e, b] = await Promise.all([
     supabase.from('monthly_wallet').select('month'),
     supabase.from('wallet_entries').select('month'),

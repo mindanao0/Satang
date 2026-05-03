@@ -25,7 +25,6 @@ import { DashboardPdfExportContent } from '../components/DashboardPdfExportConte
 import { exportElementToPdf, exportTransactionsExcel } from '../lib/reportExport'
 import { getChartPalette } from '../lib/chartPalette'
 import { supabase } from '../lib/supabase'
-import { isSupabaseConfigured } from '../lib/supabaseFinance'
 import {
   fetchMonthlyWalletForMonth,
   fetchWalletEntriesForMonth,
@@ -57,7 +56,6 @@ export function Dashboard() {
   const currentMonthKey = useMemo(() => monthKeyFromDate(new Date()), [])
 
   const refreshDashboardWallet = useCallback(async () => {
-    if (!isSupabaseConfigured()) return
     const now = new Date()
     const labels: { y: number; m: number }[] = []
     const keys: string[] = []
@@ -102,7 +100,6 @@ export function Dashboard() {
   }, [refreshDashboardWallet])
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return
     const ch = supabase
       .channel(`dashboard-wallet-${currentMonthKey}`)
       .on(

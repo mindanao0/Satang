@@ -96,11 +96,6 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!db.isSupabaseConfigured()) {
-        showToast('ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY')
-        setFinanceHydrating(false)
-        return
-      }
       const res = await db.fetchFinanceBootstrap()
       if (cancelled) return
       if (!res.ok) {
@@ -122,7 +117,6 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (financeHydrating) return
-    if (!db.isSupabaseConfigured()) return
 
     const additions = buildDueRecurringTransactions(transactionsRef.current, recurringTransactions)
     if (additions.length === 0) return

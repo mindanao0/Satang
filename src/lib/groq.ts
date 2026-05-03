@@ -2,9 +2,7 @@ const API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL = 'llama-3.3-70b-versatile'
 
 function getApiKey(): string {
-  const key = import.meta.env.VITE_GROQ_API_KEY
-  if (!key) throw new Error('ยังไม่ได้ตั้งค่า VITE_GROQ_API_KEY ในไฟล์ .env')
-  return key
+  return import.meta.env.VITE_GROQ_API_KEY as string
 }
 
 export async function callGroq(

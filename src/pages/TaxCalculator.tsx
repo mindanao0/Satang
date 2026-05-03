@@ -9,7 +9,6 @@ import {
 import { formatTHB } from '../lib/format'
 import { streamGroq } from '../lib/groq'
 import { Spinner } from '../components/Spinner'
-import { isSupabaseConfigured } from '../lib/supabaseFinance'
 import { fetchMonthlyWalletForMonth, monthKeyFromDate } from '../lib/supabaseWallet'
 
 export function TaxCalculator() {
@@ -27,10 +26,6 @@ export function TaxCalculator() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!isSupabaseConfigured()) {
-        setWalletLoaded(true)
-        return
-      }
       const mk = monthKeyFromDate(new Date())
       const { data, error } = await fetchMonthlyWalletForMonth(mk)
       if (cancelled) return

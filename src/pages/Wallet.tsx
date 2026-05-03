@@ -6,7 +6,6 @@ import { useTheme } from '../context/ThemeContext'
 import { callGroq } from '../lib/groq'
 import { formatMonthKeyLabel, formatTHB, toISO } from '../lib/format'
 import { getChartPalette } from '../lib/chartPalette'
-import { isSupabaseConfigured } from '../lib/supabaseFinance'
 import { supabase } from '../lib/supabase'
 import {
   WALLET_CATEGORIES,
@@ -55,7 +54,7 @@ function budgetsToDraft(rows: WalletCategoryBudget[]): Record<WalletCategory, st
 
 type AddWalletEntryFormProps = {
   month: string
-  disabled: boolean
+  disabled?: boolean
   inputClass: string
   onSaved: () => void
   showToast: (message: string) => void
@@ -63,7 +62,7 @@ type AddWalletEntryFormProps = {
 
 function AddWalletEntryForm({
   month,
-  disabled,
+  disabled = false,
   inputClass,
   onSaved,
   showToast,
@@ -236,11 +235,6 @@ export function Wallet() {
   const [aiError, setAiError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured()) {
-      setLoadError('ยังไม่ได้ตั้งค่า Supabase (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     setLoadError(null)
     try {
@@ -269,7 +263,6 @@ export function Wallet() {
   }, [refresh])
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return
     const ch = supabase
       .channel(`wallet-${selectedMonth}`)
       .on(
@@ -493,12 +486,6 @@ export function Wallet() {
         </label>
       </div>
 
-      {!isSupabaseConfigured() ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          ตั้งค่า Supabase ในไฟล์ .env แล้วรีเฟรชหน้าเว็บเพื่อใช้กระเป๋าเงิน
-        </div>
-      ) : null}
-
       {loadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
           {loadError}
@@ -534,12 +521,11 @@ export function Wallet() {
               className={inputClass}
               value={startingDraft}
               onChange={(e) => setStartingDraft(e.target.value)}
-              disabled={!isSupabaseConfigured()}
             />
           </label>
           <button
             type="submit"
-            disabled={savingStarting || !isSupabaseConfigured()}
+            disabled={savingStarting}
             className="rounded-lg bg-blue-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-900 disabled:opacity-60 dark:bg-sky-700 dark:hover:bg-sky-600"
           >
             {savingStarting ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
@@ -645,7 +631,6 @@ export function Wallet() {
                     placeholder="งบ (บาท) ว่าง = ไม่ตั้ง"
                     value={budgetDraft[cat]}
                     onChange={(e) => setBudgetDraft((d) => ({ ...d, [cat]: e.target.value }))}
-                    disabled={!isSupabaseConfigured()}
                   />
                   {cap > 0 ? (
                     <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -663,7 +648,7 @@ export function Wallet() {
           </ul>
           <button
             type="submit"
-            disabled={savingBudgets || !isSupabaseConfigured()}
+            disabled={savingBudgets}
             className="mt-6 rounded-lg bg-indigo-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-900 disabled:opacity-60 dark:bg-indigo-700 dark:hover:bg-indigo-600"
           >
             {savingBudgets ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
@@ -675,7 +660,6 @@ export function Wallet() {
       <AddWalletEntryForm
         key={selectedMonth}
         month={selectedMonth}
-        disabled={!isSupabaseConfigured()}
         inputClass={inputClass}
         onSaved={() => void refresh()}
         showToast={showToast}
@@ -840,7 +824,7 @@ export function Wallet() {
         <button
           type="button"
           onClick={() => void runAi()}
-          disabled={aiLoading || !isSupabaseConfigured()}
+          disabled={aiLoading}
           className="mt-4 inline-flex items-center gap-2 rounded-lg bg-violet-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-900 disabled:opacity-60 dark:bg-violet-700 dark:hover:bg-violet-600"
         >
           {aiLoading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}

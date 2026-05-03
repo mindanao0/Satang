@@ -9,7 +9,6 @@ import {
 import { formatMonthLabel, formatTHB } from '../lib/format'
 import { Spinner } from '../components/Spinner'
 import { EXPENSE_CATEGORIES } from '../types'
-import { isSupabaseConfigured } from '../lib/supabaseFinance'
 import {
   fetchMonthlyWalletForMonth,
   fetchWalletEntriesForMonths,
@@ -67,10 +66,6 @@ export function AIAnalysis() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!isSupabaseConfigured()) {
-        setWalletLoadError('ยังไม่ได้ตั้งค่า Supabase')
-        return
-      }
       const keys = lastNMonthKeys(3, now)
       const [entRes, mwRes] = await Promise.all([
         fetchWalletEntriesForMonths(keys),
