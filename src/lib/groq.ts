@@ -1,7 +1,7 @@
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL = 'llama-3.3-70b-versatile'
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY ?? 'YOUR_GROQ_KEY'
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 
 export async function callGroq(
   messages: { role: string; content: string }[],
