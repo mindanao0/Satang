@@ -7,6 +7,7 @@ import type {
   UserProfile,
 } from '../types'
 import { EXPENSE_CATEGORIES } from '../types'
+import { insertWalletEntry, walletEntryPayloadFromExpense } from './supabaseWallet'
 import { supabase } from './supabase'
 
 /** Build a single UI/toast string from a PostgREST/Supabase error (message, details, hint, code). */
@@ -214,7 +215,20 @@ export async function insertTransactions(
 ): Promise<{ error: string | null }> {
   if (rows.length === 0) return { error: null }
   const { error } = await supabase.from('transactions').insert(rows.map(transactionToRow))
-  return { error: error?.message ?? null }
+  if (error) return { error: error.message }
+
+  const expenses = rows.filter((t) => t.type === 'expense')
+  for (const t of expenses) {
+    const { error: walletErr } = await insertWalletEntry(walletEntryPayloadFromExpense(t))
+    if (walletErr) {
+      await supabase.from('transactions').delete().in(
+        'id',
+        rows.map((r) => r.id),
+      )
+      return { error: walletErr }
+    }
+  }
+  return { error: null }
 }
 
 export async function insertTransaction(t: Transaction): Promise<{ error: string | null }> {

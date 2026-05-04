@@ -1,3 +1,5 @@
+import type { Transaction } from '../types'
+import { parseISODate } from './format'
 import { supabase } from './supabase'
 
 export const WALLET_CATEGORIES = [
@@ -47,6 +49,27 @@ export function monthKeyFromDate(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   return `${y}-${m}`
+}
+
+/** Maps an expense transaction to a wallet_entries insert (name = note if non-empty, else category). */
+export function walletEntryPayloadFromExpense(t: Transaction): {
+  month: string
+  name: string
+  category: string
+  amount: number
+  date: string
+  note: string
+} {
+  const month = monthKeyFromDate(parseISODate(t.date))
+  const trimmed = t.note.trim()
+  return {
+    month,
+    name: trimmed.length > 0 ? trimmed : t.category,
+    category: t.category,
+    amount: Math.floor(t.amount),
+    date: t.date,
+    note: t.note,
+  }
 }
 
 export function mapRowToMonthlyWallet(r: Record<string, unknown>): MonthlyWallet {
@@ -101,14 +124,15 @@ export async function upsertMonthlyWalletStartingBalance(
 
 export async function fetchWalletEntriesForMonths(
   months: string[],
+  options?: { orderByDate?: boolean },
 ): Promise<{ data: WalletEntry[]; error: string | null }> {
   if (months.length === 0) return { data: [], error: null }
-  const { data, error } = await supabase
-    .from('wallet_entries')
-    .select('*')
-    .in('month', months)
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
+  const orderByDate = options?.orderByDate !== false
+  let q = supabase.from('wallet_entries').select('*').in('month', months)
+  if (orderByDate) {
+    q = q.order('date', { ascending: false }).order('created_at', { ascending: false })
+  }
+  const { data, error } = await q
   if (error) return { data: [], error: error.message }
   return { data: (data ?? []).map((r) => mapRowToWalletEntry(r as Record<string, unknown>)), error: null }
 }

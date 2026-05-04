@@ -40,7 +40,7 @@ export type DashboardPdfExportContentProps = {
   taxAnnual: number
   taxWithholding: number
   pieData: { name: string; value: number }[]
-  barData: { label: string; รายรับ: number; รายจ่าย: number }[]
+  barData: { label: string; startingBalance: number; walletExpense: number }[]
   walletMonthRows: DashboardPdfWalletRow[]
 }
 
@@ -167,8 +167,8 @@ export const DashboardPdfExportContent = forwardRef<HTMLDivElement, DashboardPdf
           <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
           <Tooltip formatter={(v) => formatTHB(Number(v ?? 0))} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar dataKey="รายรับ" fill="#15803d" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-          <Bar dataKey="รายจ่าย" fill="#b91c1c" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="startingBalance" name="ยอดตั้งต้น" fill="#15803d" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="walletExpense" name="รายจ่าย" fill="#b91c1c" radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
 
         <h2 className="mb-2 mt-8 text-base font-semibold">รายการกระเป๋าเงิน (เดือนนี้)</h2>

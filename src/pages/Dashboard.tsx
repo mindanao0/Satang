@@ -27,7 +27,7 @@ import { getChartPalette } from '../lib/chartPalette'
 import { supabase } from '../lib/supabase'
 import {
   fetchMonthlyWalletForMonth,
-  fetchWalletEntriesForMonth,
+  fetchWalletEntriesForMonths,
   monthKeyFromDate,
   type WalletEntry,
 } from '../lib/supabaseWallet'
@@ -40,9 +40,11 @@ export function Dashboard() {
 
   const [walletStarting, setWalletStarting] = useState(0)
   const [walletEntries, setWalletEntries] = useState<WalletEntry[]>([])
-  const [walletBarData, setWalletBarData] = useState<{ label: string; รายรับ: number; รายจ่าย: number }[]>(
-    [],
-  )
+  const [walletBarData, setWalletBarData] = useState<
+    { label: string; startingBalance: number; walletExpense: number }[]
+  >([])
+  /** Month key aligned with last wallet fetch (กระเป๋า + กราฟ) */
+  const [dataMonthKey, setDataMonthKey] = useState(() => monthKeyFromDate(new Date()))
   const [walletLoadError, setWalletLoadError] = useState<string | null>(null)
 
   const tax = useMemo(
@@ -52,8 +54,6 @@ export function Dashboard() {
 
   const pdfExportRef = useRef<HTMLDivElement>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
-
-  const currentMonthKey = useMemo(() => monthKeyFromDate(new Date()), [])
 
   const refreshDashboardWallet = useCallback(async () => {
     const now = new Date()
@@ -65,33 +65,44 @@ export function Dashboard() {
       labels.push({ y: d.getFullYear(), m: d.getMonth() })
     }
 
-    const bundles = await Promise.all(
-      keys.map((mk) =>
-        Promise.all([fetchMonthlyWalletForMonth(mk), fetchWalletEntriesForMonth(mk)]),
-      ),
-    )
+    const [entRes, ...mwResults] = await Promise.all([
+      fetchWalletEntriesForMonths(keys, { orderByDate: false }),
+      ...keys.map((mk) => fetchMonthlyWalletForMonth(mk)),
+    ])
 
-    let firstErr: string | null = null
-    const barRows: { label: string; รายรับ: number; รายจ่าย: number }[] = []
-    bundles.forEach(([mw, ent], idx) => {
-      const err = mw.error || ent.error
+    const spendByMonth = new Map<string, number>()
+    for (const e of entRes.data) {
+      spendByMonth.set(e.month, (spendByMonth.get(e.month) ?? 0) + e.amount)
+    }
+
+    let firstErr: string | null = entRes.error
+    const barRows: { label: string; startingBalance: number; walletExpense: number }[] = []
+    keys.forEach((mk, idx) => {
+      const mw = mwResults[idx]!
+      const err = mw.error
       if (err && !firstErr) firstErr = err
       const starting = mw.data?.startingBalance ?? 0
-      const spent = ent.data.reduce((s, e) => s + e.amount, 0)
+      const spent = spendByMonth.get(mk) ?? 0
       const { y, m } = labels[idx]!
       barRows.push({
         label: formatMonthLabel(y, m),
-        รายรับ: starting,
-        รายจ่าย: spent,
+        startingBalance: starting,
+        walletExpense: spent,
       })
     })
 
     const curIdx = 5
-    const [mwC, entC] = bundles[curIdx]!
-    const curErr = mwC.error || entC.error
+    const mkCurrent = keys[curIdx]!
+    const mwC = mwResults[curIdx]!
+    const curErr = entRes.error || mwC.error
     setWalletLoadError(curErr || firstErr)
+    setDataMonthKey(mkCurrent)
     setWalletStarting(mwC.data?.startingBalance ?? 0)
-    setWalletEntries(entC.data)
+    setWalletEntries(
+      entRes.data
+        .filter((e) => e.month === mkCurrent)
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    )
     setWalletBarData(barRows)
   }, [])
 
@@ -101,20 +112,20 @@ export function Dashboard() {
 
   useEffect(() => {
     const ch = supabase
-      .channel(`dashboard-wallet-${currentMonthKey}`)
+      .channel(`dashboard-wallet-${dataMonthKey}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'wallet_entries', filter: `month=eq.${currentMonthKey}` },
+        { event: '*', schema: 'public', table: 'wallet_entries', filter: `month=eq.${dataMonthKey}` },
         () => void refreshDashboardWallet(),
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'monthly_wallet', filter: `month=eq.${currentMonthKey}` },
+        { event: '*', schema: 'public', table: 'monthly_wallet', filter: `month=eq.${dataMonthKey}` },
         () => void refreshDashboardWallet(),
       )
       .subscribe()
     return () => void supabase.removeChannel(ch)
-  }, [currentMonthKey, refreshDashboardWallet])
+  }, [dataMonthKey, refreshDashboardWallet])
 
   const walletSpent = useMemo(
     () => walletEntries.reduce((s, e) => s + e.amount, 0),
@@ -123,41 +134,65 @@ export function Dashboard() {
 
   const transactionsExpenseThisMonth = useMemo(() => {
     return transactions
-      .filter((t) => t.type === 'expense' && t.date.slice(0, 7) === currentMonthKey)
+      .filter((t) => t.type === 'expense' && t.date.slice(0, 7) === dataMonthKey)
       .reduce((s, t) => s + t.amount, 0)
-  }, [transactions, currentMonthKey])
+  }, [transactions, dataMonthKey])
 
-  const monthStats = useMemo(() => {
+  /** รายจ่ายตามหมวดจาก wallet_entries เดือนปัจจุบัน (ใช้เปรียบเทียบงบประมาณ) */
+  const expenseByCategoryWallet = useMemo(() => {
     const byCat: Record<string, number> = {}
     for (const e of walletEntries) {
       byCat[e.category] = (byCat[e.category] ?? 0) + e.amount
     }
+    return byCat
+  }, [walletEntries])
+
+  /** รายจ่ายตามหมวดจาก transactions เดือนปัจจุบัน */
+  const expenseByCategoryTransactions = useMemo(() => {
+    const byCat: Record<string, number> = {}
+    for (const t of transactions) {
+      if (t.type !== 'expense' || t.date.slice(0, 7) !== dataMonthKey) continue
+      byCat[t.category] = (byCat[t.category] ?? 0) + t.amount
+    }
+    return byCat
+  }, [transactions, dataMonthKey])
+
+  /** โดนัท: รวม wallet + ธุรกรรมตามหมวด */
+  const expenseByCategoryCombined = useMemo(() => {
+    const out: Record<string, number> = { ...expenseByCategoryWallet }
+    for (const [cat, amt] of Object.entries(expenseByCategoryTransactions)) {
+      out[cat] = (out[cat] ?? 0) + amt
+    }
+    return out
+  }, [expenseByCategoryWallet, expenseByCategoryTransactions])
+
+  const monthStats = useMemo(() => {
     const expense = walletSpent + transactionsExpenseThisMonth
     const savings = walletStarting - expense
-    return { expense, savings, byCat, walletSpent, transactionsExpenseThisMonth }
-  }, [walletEntries, walletSpent, walletStarting, transactionsExpenseThisMonth])
-
-  const walletSig = useMemo(() => JSON.stringify(walletEntries.map((e) => e.id)), [walletEntries])
+    return { expense, savings, walletSpent, transactionsExpenseThisMonth }
+  }, [walletSpent, transactionsExpenseThisMonth, walletStarting])
 
   const pieData = useMemo(
     () =>
-      Object.entries(monthStats.byCat).map(([name, value]) => ({
-        name,
-        value,
-      })),
-    [monthStats.byCat],
+      Object.entries(expenseByCategoryCombined)
+        .filter(([, value]) => value > 0)
+        .map(([name, value]) => ({
+          name,
+          value,
+        })),
+    [expenseByCategoryCombined],
   )
 
   const budgetRows = useMemo(() => {
     return EXPENSE_CATEGORIES.filter((cat) => (budgetLimits[cat] ?? 0) > 0).map((cat) => {
       const limit = budgetLimits[cat]!
-      const used = monthStats.byCat[cat] ?? 0
+      const used = expenseByCategoryWallet[cat] ?? 0
       const pct = limit > 0 ? (used / limit) * 100 : 0
       const over = used > limit
       const warn = !over && used > limit * 0.8
       return { cat, limit, used, pct, over, warn }
     })
-  }, [budgetLimits, monthStats.byCat])
+  }, [budgetLimits, expenseByCategoryWallet])
 
   const monthWalletRowsPdf = useMemo(
     () =>
@@ -205,7 +240,7 @@ export function Dashboard() {
 
   const monthlyForTaxHint = profile.salary > 0 ? profile.salary : walletStarting
 
-  useEffect(() => {
+  const runAiSummary = useCallback(async () => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -215,7 +250,8 @@ export function Dashboard() {
 ยอดตั้งต้นกระเป๋าเดือนนี้: ${walletStarting}
 เดือนนี้ — รายจ่ายรวม: ${monthStats.expense} (กระเป๋าเงิน ${monthStats.walletSpent} + ธุรกรรม ${monthStats.transactionsExpenseThisMonth}), เงินเหลือ/ออม: ${monthStats.savings}
 ภาษีประมาณการต่อปี: ${tax.taxAnnual} บาท
-รายจ่ายตามหมวด (กระเป๋าเงิน): ${JSON.stringify(monthStats.byCat)}
+รายจ่ายตามหมวด (กระเป๋า + ธุรกรรมรวม): ${JSON.stringify(expenseByCategoryCombined)}
+รายจ่ายจากกระเป๋าตามหมวด (เทียบงบ): ${JSON.stringify(expenseByCategoryWallet)}
 จำนวนรายการกระเป๋าเดือนนี้: ${walletEntries.length}
 `
 
@@ -223,27 +259,31 @@ export function Dashboard() {
     setAiError(null)
     setAiLoading(true)
 
-    ;(async () => {
-      try {
-        await streamGroq(
-          `จากข้อมูลนี้ ช่วยสรุปสั้นๆ 3-6 ประโยคเป็นภาษาไทย ให้คำแนะนำเชิงบวก:\n${stats}`,
-          'คุณเป็นที่ปรึกษาการเงินส่วนบุคคล ตอบกระชับ เป็นภาษาไทย ไม่ใช้ markdown',
-          (delta) => {
-            if (ac.signal.aborted) return
-            setAiSummary((s) => s + delta)
-          },
-          900,
-        )
-      } catch (e) {
-        if (ac.signal.aborted) return
-        setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-      } finally {
-        if (!ac.signal.aborted) setAiLoading(false)
-      }
-    })()
-
-    return () => ac.abort()
-  }, [walletSig, walletStarting, monthStats, tax.taxAnnual, monthlyForTaxHint, walletEntries.length])
+    try {
+      await streamGroq(
+        `จากข้อมูลนี้ ช่วยสรุปสั้นๆ 3-6 ประโยคเป็นภาษาไทย ให้คำแนะนำเชิงบวก:\n${stats}`,
+        'คุณเป็นที่ปรึกษาการเงินส่วนบุคคล ตอบกระชับ เป็นภาษาไทย ไม่ใช้ markdown',
+        (delta) => {
+          if (ac.signal.aborted) return
+          setAiSummary((s) => s + delta)
+        },
+        900,
+      )
+    } catch (e) {
+      if (ac.signal.aborted) return
+      setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+    } finally {
+      if (!ac.signal.aborted) setAiLoading(false)
+    }
+  }, [
+    monthlyForTaxHint,
+    walletStarting,
+    monthStats,
+    tax.taxAnnual,
+    expenseByCategoryCombined,
+    expenseByCategoryWallet,
+    walletEntries.length,
+  ])
 
   return (
     <div className="space-y-8">
@@ -332,7 +372,12 @@ export function Dashboard() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-6 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">งบประมาณรายหมวด (เดือนนี้)</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">งบประมาณรายหมวด (เดือนนี้)</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              เปรียบเทียบเพดานงบกับรายจ่ายจากกระเป๋าเงิน (wallet_entries) เท่านั้น
+            </p>
+          </div>
           <Link
             to="/budget"
             className="text-sm font-medium text-blue-800 hover:text-blue-900 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
@@ -383,6 +428,9 @@ export function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">สัดส่วนรายจ่ายตามหมวด (เดือนนี้)</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            รวมรายจ่ายจากกระเป๋าเงินและธุรกรรม — จัดกลุ่มตามหมวดแล้วรวมยอด
+          </p>
           <div className="mt-4 h-72">
             {pieData.length === 0 ? (
               <p className="py-16 text-center text-slate-500 dark:text-slate-400">ยังไม่มีรายจ่ายในเดือนนี้</p>
@@ -437,8 +485,8 @@ export function Dashboard() {
                   }}
                 />
                 <Legend wrapperStyle={{ color: cp.legendColor, fontSize: 12 }} />
-                <Bar dataKey="รายรับ" fill={cp.income} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="รายจ่าย" fill={cp.expense} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="startingBalance" name="ยอดตั้งต้น" fill={cp.income} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="walletExpense" name="รายจ่าย" fill={cp.expense} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -446,15 +494,24 @@ export function Dashboard() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">สรุปจาก AI</h2>
-          {aiLoading ? <Spinner /> : null}
+          <button
+            type="button"
+            onClick={() => void runAiSummary()}
+            disabled={aiLoading}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-900 disabled:opacity-60 dark:bg-sky-700 dark:hover:bg-sky-600"
+          >
+            {aiLoading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
+            ให้ AI วิเคราะห์
+          </button>
         </div>
         {aiError ? (
           <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
         ) : (
           <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-            {aiSummary || (aiLoading ? 'กำลังวิเคราะห์...' : '')}
+            {aiSummary ||
+              (aiLoading ? 'กำลังวิเคราะห์...' : 'กดปุ่ม "ให้ AI วิเคราะห์" เพื่อสรุปจากข้อมูลบนหน้านี้')}
           </p>
         )}
       </div>

@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type Transaction } from '../types'
 import { formatTHB, parseISODate, toISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
+import { insertWalletEntry } from '../lib/wallet'
 import {
   WALLET_CATEGORIES,
   deleteWalletEntry,
@@ -11,7 +12,6 @@ import {
   fetchWalletEntriesForMonth,
   fetchWalletEntriesForMonths,
   fetchWalletMonthKeys,
-  insertWalletEntry,
   monthKeyFromDate,
   updateWalletEntry,
   upsertMonthlyWalletStartingBalance,
@@ -40,9 +40,7 @@ function monthOptions(
 
 const allCategories = [...new Set([...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES])]
 
-type MergedRow =
-  | { kind: 'transaction'; t: Transaction }
-  | { kind: 'wallet'; w: WalletEntry }
+type MergedRow = { kind: 'income'; t: Transaction } | { kind: 'wallet'; w: WalletEntry }
 
 export function Transactions() {
   const {
@@ -166,13 +164,7 @@ export function Transactions() {
     }
   }, [filterMonth, monthKeysForAllFilter, walletListVersion])
 
-  const transactionsExpenseThisMonth = useMemo(() => {
-    return transactions
-      .filter((t) => t.type === 'expense' && t.date.slice(0, 7) === currentMonthKey)
-      .reduce((s, t) => s + t.amount, 0)
-  }, [transactions, currentMonthKey])
-
-  const usedTotal = summaryWalletSpent + transactionsExpenseThisMonth
+  const usedTotal = summaryWalletSpent
   const remaining = summaryStarting - usedTotal
   const pctUsed = summaryStarting > 0 ? Math.min(100, (usedTotal / summaryStarting) * 100) : 0
   const isLow =
@@ -187,8 +179,10 @@ export function Transactions() {
 
   const categoriesForType = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
-  const filteredTransactions = useMemo(() => {
+  /** Income only — expenses appear via wallet_entries to avoid duplicating dual-written rows. */
+  const filteredIncomeTransactions = useMemo(() => {
     return transactions.filter((t) => {
+      if (t.type !== 'income') return false
       if (filterCategory !== 'all' && t.category !== filterCategory) return false
       if (filterMonth === 'all') return true
       const d = parseISODate(t.date)
@@ -206,17 +200,17 @@ export function Transactions() {
 
   const sortedDisplay = useMemo(() => {
     const rows: MergedRow[] = []
-    for (const t of filteredTransactions) rows.push({ kind: 'transaction', t })
+    for (const t of filteredIncomeTransactions) rows.push({ kind: 'income', t })
     for (const w of filteredWallet) rows.push({ kind: 'wallet', w })
     return rows.sort((a, b) => {
-      const dateA = a.kind === 'transaction' ? a.t.date : a.w.date
-      const dateB = b.kind === 'transaction' ? b.t.date : b.w.date
+      const dateA = a.kind === 'income' ? a.t.date : a.w.date
+      const dateB = b.kind === 'income' ? b.t.date : b.w.date
       if (dateA !== dateB) return dateA < dateB ? 1 : -1
-      const tieA = a.kind === 'transaction' ? a.t.id : a.w.createdAt
-      const tieB = b.kind === 'transaction' ? b.t.id : b.w.createdAt
+      const tieA = a.kind === 'income' ? a.t.id : a.w.createdAt
+      const tieB = b.kind === 'income' ? b.t.id : b.w.createdAt
       return tieB.localeCompare(tieA)
     })
-  }, [filteredTransactions, filteredWallet])
+  }, [filteredIncomeTransactions, filteredWallet])
 
   function resetForm() {
     setType('expense')
@@ -303,7 +297,7 @@ export function Transactions() {
       showToast('กรุณากรอกชื่อรายการ')
       return
     }
-    const month = wDate.slice(0, 7)
+    const month = monthKeyFromDate(parseISODate(wDate))
     if (editingWalletId) {
       const { error } = await updateWalletEntry(editingWalletId, {
         name: trimmed,
@@ -319,16 +313,19 @@ export function Transactions() {
       }
       showToast('แก้ไขรายการกระเป๋าแล้ว')
     } else {
-      const { error } = await insertWalletEntry({
+      const entryData = {
         month,
         name: trimmed,
         category: wCategory,
         amount: Math.floor(num),
         date: wDate,
         note: wNote,
-      })
-      if (error) {
-        showToast(error)
+      }
+      console.log('[DEBUG] Saving wallet entry:', entryData)
+      const result = await insertWalletEntry(entryData)
+      console.log('[DEBUG] Result:', result)
+      if (result.error) {
+        showToast(result.error)
         return
       }
       showToast('บันทึกรายจ่ายกระเป๋าแล้ว')
@@ -423,9 +420,7 @@ export function Transactions() {
             <div className="mt-1 text-lg font-semibold tabular-nums text-red-700 dark:text-red-400">
               {formatTHB(usedTotal)}
             </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              กระเป๋า {formatTHB(summaryWalletSpent)} + ธุรกรรม {formatTHB(transactionsExpenseThisMonth)}
-            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">รายจ่ายจากกระเป๋าเงินสด (รายการเดียวกับตารางด้านล่าง)</p>
           </div>
           <div
             className={`rounded-lg border p-4 ${
@@ -799,7 +794,7 @@ export function Transactions() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">รายการทั้งหมด</h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              ธุรกรรมหลักและรายจ่ายกระเป๋าเงินสดในตารางเดียวกัน
+              รายรับจากบันทึกหลัก · รายจ่ายแสดงจากกระเป๋าเงินสด (ครั้งเดียวต่อรายการ)
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -847,7 +842,6 @@ export function Transactions() {
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-600 dark:text-slate-400">
                 <th className="py-2 pr-3 font-medium">วันที่</th>
-                <th className="py-2 pr-3 font-medium">แหล่ง</th>
                 <th className="py-2 pr-3 font-medium">ประเภท</th>
                 <th className="py-2 pr-3 font-medium">ชื่อรายการ</th>
                 <th className="py-2 pr-3 font-medium">หมวดหมู่</th>
@@ -859,34 +853,22 @@ export function Transactions() {
             <tbody>
               {sortedDisplay.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-500 dark:text-slate-400">
                     ไม่มีรายการตามตัวกรอง
                   </td>
                 </tr>
               ) : (
                 sortedDisplay.map((row) =>
-                  row.kind === 'transaction' ? (
+                  row.kind === 'income' ? (
                     <tr key={`tx-${row.t.id}`} className="border-b border-slate-100 dark:border-slate-700">
                       <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{row.t.date}</td>
-                      <td className="py-2 pr-3 text-slate-600 dark:text-slate-400">ธุรกรรม</td>
                       <td className="py-2 pr-3">
-                        <span
-                          className={
-                            row.t.type === 'income'
-                              ? 'font-medium text-green-700 dark:text-green-400'
-                              : 'font-medium text-red-700 dark:text-red-400'
-                          }
-                        >
-                          {row.t.type === 'income' ? 'รายรับ' : 'รายจ่าย'}
-                        </span>
+                        <span className="font-medium text-green-700 dark:text-green-400">รายรับ</span>
                       </td>
                       <td className="py-2 pr-3 text-slate-500 dark:text-slate-500">—</td>
                       <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{row.t.category}</td>
-                      <td
-                        className={`py-2 pr-3 text-right font-medium ${row.t.type === 'income' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
-                      >
-                        {row.t.type === 'income' ? '+' : '−'}
-                        {formatTHB(row.t.amount)}
+                      <td className="py-2 pr-3 text-right font-medium text-green-700 dark:text-green-400">
+                        +{formatTHB(row.t.amount)}
                       </td>
                       <td className="max-w-[180px] truncate py-2 pr-3 text-slate-600 dark:text-slate-400">
                         {row.t.note}
@@ -915,7 +897,6 @@ export function Transactions() {
                   ) : (
                     <tr key={`w-${row.w.id}`} className="border-b border-slate-100 dark:border-slate-700">
                       <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{row.w.date}</td>
-                      <td className="py-2 pr-3 font-medium text-teal-800 dark:text-teal-400">กระเป๋าเงิน</td>
                       <td className="py-2 pr-3 font-medium text-red-700 dark:text-red-400">รายจ่าย</td>
                       <td className="py-2 pr-3 text-slate-800 dark:text-slate-200">{row.w.name}</td>
                       <td className="py-2 pr-3 text-slate-700 dark:text-slate-300">{row.w.category}</td>

@@ -1,0 +1,1 @@
+export { insertWalletEntry } from './supabaseWallet'

@@ -520,7 +520,8 @@ export function NetWorth() {
           <p className="mt-4 text-sm text-red-600 dark:text-red-400">{aiError}</p>
         ) : (
           <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-            {aiText || (aiLoading ? 'กำลังวิเคราะห์...' : '')}
+            {aiText ||
+              (aiLoading ? 'กำลังวิเคราะห์...' : 'กดปุ่ม "วิเคราะห์ด้วย AI" เพื่อเริ่มวิเคราะห์')}
           </p>
         )}
       </div>

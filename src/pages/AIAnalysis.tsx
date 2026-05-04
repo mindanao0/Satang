@@ -199,7 +199,7 @@ export function AIAnalysis() {
         className="inline-flex items-center gap-2 rounded-lg bg-blue-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-900 disabled:opacity-60 dark:bg-sky-700 dark:hover:bg-sky-600"
       >
         {loading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
-        วิเคราะห์ด้วย AI
+        ให้ AI วิเคราะห์
       </button>
 
       {error ? (
@@ -211,7 +211,7 @@ export function AIAnalysis() {
       <div className="min-h-[200px] rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ผลการวิเคราะห์</h2>
         <div className="mt-3 max-w-none whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-slate-200">
-          {text || (loading ? 'กำลังสตรีมข้อความ...' : 'กดปุ่มด้านบนเพื่อเริ่มวิเคราะห์')}
+          {text || (loading ? 'กำลังสตรีมข้อความ...' : 'กดปุ่ม "ให้ AI วิเคราะห์" เพื่อเริ่ม')}
         </div>
       </div>
 
@@ -227,7 +227,7 @@ export function AIAnalysis() {
           className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-900 disabled:opacity-60 dark:bg-indigo-700 dark:hover:bg-indigo-600"
         >
           {forecastLoading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
-          คาดการณ์ด้วย AI
+          ให้ AI คาดการณ์เดือนหน้า
         </button>
 
         {forecastError ? (

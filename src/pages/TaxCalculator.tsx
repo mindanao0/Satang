@@ -271,12 +271,17 @@ export function TaxCalculator() {
               disabled={aiLoading}
               className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
             >
-              ให้ AI แนะนำการลดหย่อนภาษีเพิ่มเติม
+              วิเคราะห์ด้วย AI
             </button>
             {aiError ? (
               <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
             ) : (
-              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{aiText}</p>
+              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
+                {aiText ||
+                  (aiLoading
+                    ? 'กำลังวิเคราะห์...'
+                    : 'กดปุ่ม "วิเคราะห์ด้วย AI" เพื่อรับคำแนะนำลดหย่อนภาษี')}
+              </p>
             )}
           </div>
         </div>
