@@ -16,8 +16,6 @@ import { useToast } from '../context/ToastContext'
 import { useTheme } from '../context/ThemeContext'
 import { computeNetWorthTotals } from '../lib/netWorthUtils'
 import { formatMonthLabel, formatTHB } from '../lib/format'
-import { streamGroq } from '../lib/groq'
-import { Spinner } from '../components/Spinner'
 import {
   ASSET_TYPES,
   LIABILITY_TYPES,
@@ -93,9 +91,6 @@ export function NetWorth() {
   const [lType, setLType] = useState<LiabilityType>(LIABILITY_TYPES[0])
   const [editingLiabilityId, setEditingLiabilityId] = useState<string | null>(null)
 
-  const [aiText, setAiText] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
 
   function resetAssetForm() {
     setAName('')
@@ -159,39 +154,6 @@ export function NetWorth() {
     resetLiabilityForm()
   }
 
-  async function runAiAnalysis() {
-    setAiError(null)
-    setAiText('')
-    setAiLoading(true)
-    const liabilitiesByType: Record<string, number> = {}
-    for (const l of liabilities) {
-      liabilitiesByType[l.type] = (liabilitiesByType[l.type] ?? 0) + l.amount
-    }
-    const stats = {
-      totalAssets,
-      totalLiabilities,
-      netWorth,
-      debtToAssetRatio: debtToAssetRatio != null ? Number((debtToAssetRatio * 100).toFixed(2)) : null,
-      assetsByType,
-      liabilitiesByType,
-      assetCount: assets.length,
-      liabilityCount: liabilities.length,
-    }
-    const userPrompt = `ข้อมูลสรุป (JSON):\n${JSON.stringify(stats)}\n\ndebtToAssetRatio คือหนี้สินรวม ÷ ทรัพย์สินรวม (แสดงเป็น % ใน JSON แล้ว)\n\nกรุณาวิเคราะห์:\n1) ความหมายของสัดส่วนหนี้ต่อสินทรัพย์ (debt-to-asset) ในกรณีของผู้ใช้\n2) จุดเสี่ยงหรือจุดแข็งสั้นๆ\n3) คำแนะนำปรับปรุง 3-5 ข้อ (เช่น ลดหนี้บัตร, สร้างเงินสดสำรอง)\n\nตอบเป็นภาษาไทย กระชับ ไม่ใช้ markdown`
-
-    try {
-      await streamGroq(
-        userPrompt,
-        'คุณเป็นที่ปรึกษาการเงินส่วนบุคคล ให้คำแนะนำที่เป็นจริงและนุ่มนวล',
-        (d) => setAiText((s) => s + d),
-        2048,
-      )
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    } finally {
-      setAiLoading(false)
-    }
-  }
 
   return (
     <div className="space-y-8">
@@ -498,33 +460,6 @@ export function NetWorth() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">วิเคราะห์ AI</h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              ให้ AI วิเคราะห์สัดส่วนหนี้ต่อสินทรัพย์ (debt-to-asset) และแนะนำการปรับปรุง
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={runAiAnalysis}
-            disabled={aiLoading}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-900 disabled:opacity-60 dark:bg-indigo-700 dark:hover:bg-indigo-600"
-          >
-            {aiLoading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
-            วิเคราะห์ด้วย AI
-          </button>
-        </div>
-        {aiError ? (
-          <p className="mt-4 text-sm text-red-600 dark:text-red-400">{aiError}</p>
-        ) : (
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-            {aiText ||
-              (aiLoading ? 'กำลังวิเคราะห์...' : 'กดปุ่ม "วิเคราะห์ด้วย AI" เพื่อเริ่มวิเคราะห์')}
-          </p>
-        )}
-      </div>
     </div>
   )
 }

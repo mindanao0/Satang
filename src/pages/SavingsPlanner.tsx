@@ -4,8 +4,6 @@ import { useToast } from '../context/ToastContext'
 import type { SavingsGoal } from '../types'
 import { monthsBetween, projectedBalanceAtDate, requiredMonthlyPayment } from '../lib/savings'
 import { formatTHB } from '../lib/format'
-import { streamGroq } from '../lib/groq'
-import { Spinner } from '../components/Spinner'
 import {
   fetchMonthlyWalletForMonth,
   fetchWalletEntriesForMonth,
@@ -27,9 +25,6 @@ export function SavingsPlanner() {
   const [walletReady, setWalletReady] = useState(false)
   const prefilledContrib = useRef(false)
 
-  const [aiText, setAiText] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
 
   const returnNum = Number(annualReturn) || 0
 
@@ -120,36 +115,6 @@ export function SavingsPlanner() {
     resetForm()
   }
 
-  async function askAi() {
-    setAiError(null)
-    setAiText('')
-    if (savingsGoals.length === 0) {
-      setAiError('เพิ่มเป้าหมายออมก่อนเพื่อให้ AI วิเคราะห์')
-      return
-    }
-    setAiLoading(true)
-    try {
-      const payload = savingsGoals.map((g) => {
-        const ins = goalInsights.get(g.id)
-        return {
-          ...g,
-          monthsRemaining: ins?.months,
-          suggestedMonthlyAtAssumedReturn: ins?.required,
-          projectedWithCurrentContribution: ins?.projected,
-        }
-      })
-      await streamGroq(
-        `ข้อมูลเป้าหมายการออมและการลงทุน (สมมติผลตอบแทน ${returnNum}% ต่อปี):\n${JSON.stringify(payload, null, 2)}\n\nช่วยวิเคราะห์ความเป็นไปได้ ความเสี่ยงเบื้องต้น และแนวทางกระจายการลงทุน/ออมในบริบทไทย เป็นภาษาไทย ไม่ใช้ markdown เน้นข้อความปฏิบัติได้จริง`,
-        'คุณเป็นที่ปรึกษาการลงทุนส่วนบุคคล ตอบอย่างระมัดระวัง ไม่ถือเป็นคำแนะนำซื้อขายหลักทรัพย์',
-        (d) => setAiText((s) => s + d),
-        4096,
-      )
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    } finally {
-      setAiLoading(false)
-    }
-  }
 
   return (
     <div className="space-y-8">
@@ -168,7 +133,7 @@ export function SavingsPlanner() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <form
           onSubmit={handleAdd}
           className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6"
@@ -242,28 +207,6 @@ export function SavingsPlanner() {
           </button>
         </form>
 
-        <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm md:p-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">คำแนะนำจาก AI</h2>
-            {aiLoading ? <Spinner /> : null}
-          </div>
-          <button
-            type="button"
-            onClick={askAi}
-            disabled={aiLoading}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-          >
-            วิเคราะห์ด้วย AI
-          </button>
-          {aiError ? (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
-          ) : (
-            <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
-              {aiText ||
-                (aiLoading ? 'กำลังวิเคราะห์...' : 'กดปุ่ม "วิเคราะห์ด้วย AI" เพื่อให้คำแนะนำจากเป้าหมายของคุณ')}
-            </p>
-          )}
-        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">

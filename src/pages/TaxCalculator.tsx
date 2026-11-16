@@ -4,11 +4,8 @@ import { useToast } from '../context/ToastContext'
 import {
   clampSocialSecurityAnnual,
   computeTaxFromProfileAndWallet,
-  totalAnnualDeductions,
 } from '../lib/tax'
 import { formatTHB } from '../lib/format'
-import { streamGroq } from '../lib/groq'
-import { Spinner } from '../components/Spinner'
 import { fetchMonthlyWalletForMonth, monthKeyFromDate } from '../lib/supabaseWallet'
 
 export function TaxCalculator() {
@@ -19,9 +16,6 @@ export function TaxCalculator() {
   const [walletLoaded, setWalletLoaded] = useState(false)
   const didAutofillSalary = useRef(false)
 
-  const [aiText, setAiText] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -69,32 +63,6 @@ export function TaxCalculator() {
     if (!error) showToast('บันทึกข้อมูลแล้ว')
   }, [profile, setProfile, showToast])
 
-  async function askAi() {
-    setAiError(null)
-    setAiText('')
-    setAiLoading(true)
-    try {
-      const summary = `
-เงินเดือนในโปรไฟล์ (บาท/เดือน): ${profile.salary}
-ยอดตั้งต้นกระเป๋าเดือนนี้: ${walletStarting}
-เงินได้ทั้งปีโดยประมาณ (ฐานคำนวณ): ${breakdown.annualGross}
-ค่าลดหย่อนรวม: ${totalAnnualDeductions(profile)} (รวมประกันสังคมหลังจำกัดสูงสุด 9,000 บาท/ปี)
-เงินได้สุทธิสำหรับคำนวณภาษี: ${breakdown.netTaxableIncome}
-ภาษีประมาณการต่อปี: ${breakdown.taxAnnual}
-รายละเอียดค่าลดหย่อน: ${JSON.stringify(profile.taxDeductions)}
-`
-      await streamGroq(
-        `จากข้อมูลผู้ใช้:\n${summary}\n\nช่วยแนะนำแนวทางลดหย่อนภาษีเพิ่มเติมที่เหมาะสมในบริบทไทย (SSF, RMF, ประกันชีวิต ฯลฯ) เป็นภาษาไทย 3-8 ย่อหน้า ไม่ใช้ markdown เน้นข้อความที่เข้าใจง่าย`,
-        'คุณเป็นที่ปรึกษาภาษีส่วนบุคคลในประเทศไทย ตอบอย่างระมัดระวัง ไม่ถือเป็นคำแนะนำทางกฎหมาย',
-        (d) => setAiText((s) => s + d),
-        4096,
-      )
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    } finally {
-      setAiLoading(false)
-    }
-  }
 
   const ssCapped = clampSocialSecurityAnnual(profile.taxDeductions.socialSecurity)
 
@@ -260,30 +228,6 @@ export function TaxCalculator() {
             </ul>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">คำแนะนำจาก AI</h2>
-              {aiLoading ? <Spinner /> : null}
-            </div>
-            <button
-              type="button"
-              onClick={askAi}
-              disabled={aiLoading}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-            >
-              วิเคราะห์ด้วย AI
-            </button>
-            {aiError ? (
-              <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
-            ) : (
-              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
-                {aiText ||
-                  (aiLoading
-                    ? 'กำลังวิเคราะห์...'
-                    : 'กดปุ่ม "วิเคราะห์ด้วย AI" เพื่อรับคำแนะนำลดหย่อนภาษี')}
-              </p>
-            )}
-          </div>
         </div>
       </div>
 

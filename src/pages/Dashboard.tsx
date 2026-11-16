@@ -18,8 +18,6 @@ import { useToast } from '../context/ToastContext'
 import { useTheme } from '../context/ThemeContext'
 import { computeTaxFromProfileAndWallet } from '../lib/tax'
 import { formatMonthLabel, formatTHB } from '../lib/format'
-import { streamGroq } from '../lib/groq'
-import { Spinner } from '../components/Spinner'
 import { EXPENSE_CATEGORIES } from '../types'
 import { DashboardPdfExportContent } from '../components/DashboardPdfExportContent'
 import { exportElementToPdf, exportTransactionsExcel } from '../lib/reportExport'
@@ -233,57 +231,6 @@ export function Dashboard() {
     }
   }
 
-  const [aiSummary, setAiSummary] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-
-  const monthlyForTaxHint = profile.salary > 0 ? profile.salary : walletStarting
-
-  const runAiSummary = useCallback(async () => {
-    abortRef.current?.abort()
-    const ac = new AbortController()
-    abortRef.current = ac
-
-    const stats = `
-ฐานรายได้ต่อเดือนสำหรับภาษี (โปรไฟล์หรือยอดตั้งต้นกระเป๋า): ${monthlyForTaxHint} บาท/เดือน
-ยอดตั้งต้นกระเป๋าเดือนนี้: ${walletStarting}
-เดือนนี้ — รายจ่ายรวม: ${monthStats.expense} (กระเป๋าเงิน ${monthStats.walletSpent} + ธุรกรรม ${monthStats.transactionsExpenseThisMonth}), เงินเหลือ/ออม: ${monthStats.savings}
-ภาษีประมาณการต่อปี: ${tax.taxAnnual} บาท
-รายจ่ายตามหมวด (กระเป๋า + ธุรกรรมรวม): ${JSON.stringify(expenseByCategoryCombined)}
-รายจ่ายจากกระเป๋าตามหมวด (เทียบงบ): ${JSON.stringify(expenseByCategoryWallet)}
-จำนวนรายการกระเป๋าเดือนนี้: ${walletEntries.length}
-`
-
-    setAiSummary('')
-    setAiError(null)
-    setAiLoading(true)
-
-    try {
-      await streamGroq(
-        `จากข้อมูลนี้ ช่วยสรุปสั้นๆ 3-6 ประโยคเป็นภาษาไทย ให้คำแนะนำเชิงบวก:\n${stats}`,
-        'คุณเป็นที่ปรึกษาการเงินส่วนบุคคล ตอบกระชับ เป็นภาษาไทย ไม่ใช้ markdown',
-        (delta) => {
-          if (ac.signal.aborted) return
-          setAiSummary((s) => s + delta)
-        },
-        900,
-      )
-    } catch (e) {
-      if (ac.signal.aborted) return
-      setAiError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    } finally {
-      if (!ac.signal.aborted) setAiLoading(false)
-    }
-  }, [
-    monthlyForTaxHint,
-    walletStarting,
-    monthStats,
-    tax.taxAnnual,
-    expenseByCategoryCombined,
-    expenseByCategoryWallet,
-    walletEntries.length,
-  ])
 
   return (
     <div className="space-y-8">
@@ -493,28 +440,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">สรุปจาก AI</h2>
-          <button
-            type="button"
-            onClick={() => void runAiSummary()}
-            disabled={aiLoading}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-900 disabled:opacity-60 dark:bg-sky-700 dark:hover:bg-sky-600"
-          >
-            {aiLoading ? <Spinner className="!h-4 !w-4 border-t-white" /> : null}
-            ให้ AI วิเคราะห์
-          </button>
-        </div>
-        {aiError ? (
-          <p className="mt-3 text-sm text-red-600 dark:text-red-400">{aiError}</p>
-        ) : (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-            {aiSummary ||
-              (aiLoading ? 'กำลังวิเคราะห์...' : 'กดปุ่ม "ให้ AI วิเคราะห์" เพื่อสรุปจากข้อมูลบนหน้านี้')}
-          </p>
-        )}
-      </div>
 
       <div
         className="pointer-events-none fixed top-0 -left-[10000px] z-[-1]"

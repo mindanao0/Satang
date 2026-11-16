@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { useFinance } from '../context/FinanceContext'
 import { Sidebar } from './Sidebar'
-import { ChatAssistant } from './ChatAssistant'
 import { Spinner } from './Spinner'
 
 export function Layout() {
@@ -27,7 +26,6 @@ export function Layout() {
           )}
         </main>
       </div>
-      <ChatAssistant />
     </div>
   )
 }

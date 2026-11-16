@@ -5,7 +5,6 @@ import { ToastProvider } from './context/ToastContext'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Transactions } from './pages/Transactions'
-import { AIAnalysis } from './pages/AIAnalysis'
 import { TaxCalculator } from './pages/TaxCalculator'
 import { SavingsPlanner } from './pages/SavingsPlanner'
 import { Budget } from './pages/Budget'
@@ -22,7 +21,7 @@ export default function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="transactions" element={<Transactions />} />
-                <Route path="analysis" element={<AIAnalysis />} />
+                <Route path="analysis" element={<Navigate to="/" replace />} />
                 <Route path="budget" element={<Budget />} />
                 <Route path="wallet" element={<Navigate to="/transactions" replace />} />
                 <Route path="tax" element={<TaxCalculator />} />
